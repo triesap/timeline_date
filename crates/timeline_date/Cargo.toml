@@ -18,7 +18,7 @@ path = "src/lib.rs"
 default = ["std", "jiff", "mf2", "icu"]
 std = []
 jiff = ["dep:jiff"]
-mf2 = []
+mf2 = ["dep:mf2_i18n"]
 icu = ["dep:icu_datetime"]
 serde = ["dep:serde"]
 uniffi = ["dep:uniffi"]
@@ -26,6 +26,7 @@ uniffi = ["dep:uniffi"]
 [dependencies]
 icu_datetime = { workspace = true, optional = true }
 jiff = { workspace = true, optional = true }
+mf2_i18n = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 thiserror = { workspace = true }
 uniffi = { workspace = true, optional = true }

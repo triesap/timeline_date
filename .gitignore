@@ -1,0 +1,51 @@
+# Rust build artifacts
+/target/
+**/target/
+
+# Cargo
+Cargo.lock
+
+# Rust tooling
+**/*.rs.bk
+**/*.rlib
+**/*.rmeta
+**/*.o
+**/*.d
+
+# Coverage profiling
+/coverage/
+/lcov.info
+/tarpaulin-report.html
+**/*.profraw
+**/*.profdata
+
+# Logs
+*.log
+
+# OS editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*.tmp
+.local/
+notes*.txt
+justfile
+
+# Node tooling
+node_modules/
+.pnpm-store/
+.npm/
+.yarn/
+.yarn-cache/
+.yarn-unplugged/
+.pnp.*
+
+# Env files
+.env
+.env.*
+
+# Local tooling
+/tmp/

@@ -4,6 +4,8 @@ mod backend;
 mod bucket;
 mod classify;
 mod error;
+#[cfg(feature = "uniffi")]
+mod ffi;
 mod formatter;
 mod locale;
 #[cfg(feature = "mf2")]
@@ -13,5 +15,10 @@ mod time;
 
 pub use bucket::TimelineDateBucket;
 pub use error::{TimelineDateError, TimelineDateResult};
+#[cfg(feature = "uniffi")]
+pub use ffi::{TimelineDateFfiError, format_feed_label};
 pub use formatter::TimelineDateFormatter;
 pub use options::{FuturePolicy, HourCycle, TimelineDateOptions, TimelineDateStyle};
+
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!("timeline_date");

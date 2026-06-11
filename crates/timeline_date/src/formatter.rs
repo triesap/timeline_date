@@ -169,7 +169,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(feature = "jiff", feature = "mf2"))]
+    #[cfg(all(feature = "jiff", feature = "mf2", not(feature = "icu")))]
     fn format_millis_maps_detail_and_audit_styles_to_backend_errors() {
         let formatter =
             TimelineDateFormatter::new(TimelineDateOptions::new(0, "UTC")).expect("formatter");
@@ -181,6 +181,27 @@ mod tests {
             .expect_err("audit");
         assert_eq!(detail, expected_datetime_format_error());
         assert_eq!(audit, expected_datetime_format_error());
+    }
+
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "mf2", feature = "icu"))]
+    fn format_millis_formats_detail_and_audit_styles_with_icu() {
+        let formatter =
+            TimelineDateFormatter::new(TimelineDateOptions::new(1_780_958_400_000, "UTC"))
+                .expect("formatter");
+        let detail = formatter
+            .format_millis(1_780_958_400_000, crate::TimelineDateStyle::Detail)
+            .expect("detail");
+        let audit = formatter
+            .format_millis(1_780_958_400_000, crate::TimelineDateStyle::Audit)
+            .expect("audit");
+
+        for part in ["Monday", "June", "8", "2026"] {
+            assert!(detail.contains(part), "{detail:?} should contain {part:?}");
+        }
+        for part in ["Jun", "8", "2026", "UTC"] {
+            assert!(audit.contains(part), "{audit:?} should contain {part:?}");
+        }
     }
 
     #[test]
@@ -230,6 +251,7 @@ mod tests {
         );
     }
 
+    #[cfg(all(feature = "jiff", feature = "mf2", not(feature = "icu")))]
     fn expected_datetime_format_error() -> TimelineDateError {
         TimelineDateError::I18nFormat(format!(
             "unsupported: {}",

@@ -2,7 +2,6 @@ use crate::{HourCycle, TimelineDateError, TimelineDateResult};
 
 pub(crate) struct TimelineDateBackend {
     locale: String,
-    timezone: String,
     hour_cycle: HourCycle,
     std_backend: mf2_i18n::StdFormatBackend,
     #[cfg(feature = "jiff")]
@@ -19,10 +18,11 @@ impl TimelineDateBackend {
             .map_err(|error| TimelineDateError::InvalidLocale(error.to_string()))?;
         #[cfg(feature = "jiff")]
         let timezone_data = crate::time::timezone_from_id(timezone)?;
+        #[cfg(not(feature = "jiff"))]
+        let _ = timezone;
 
         Ok(Self {
             locale: locale.to_owned(),
-            timezone: timezone.to_owned(),
             hour_cycle,
             std_backend,
             #[cfg(feature = "jiff")]
@@ -37,39 +37,153 @@ impl TimelineDateBackend {
         options: &[mf2_i18n::FormatterOption],
     ) -> mf2_i18n::CoreResult<String> {
         let parsed = parse_datetime_options(options)?;
-        #[cfg(feature = "jiff")]
-        let local = self.local_datetime_parts(value)?;
-        let _ = (
-            value,
-            request,
-            parsed.style,
-            parsed.weekday,
-            parsed.month,
-            parsed.day,
-            parsed.year,
-            parsed.date_style,
-            parsed.time_style,
-            &self.locale,
-            &self.timezone,
-            self.hour_cycle,
+
+        #[cfg(all(feature = "jiff", feature = "icu"))]
+        {
+            let local = self.local_datetime_parts(value)?;
+            self.format_datetime_with_icu(local, request, parsed)
+        }
+
+        #[cfg(not(all(feature = "jiff", feature = "icu")))]
+        {
             #[cfg(feature = "jiff")]
-            local.year,
-            #[cfg(feature = "jiff")]
-            local.month,
-            #[cfg(feature = "jiff")]
-            local.day,
-            #[cfg(feature = "jiff")]
-            local.hour,
-            #[cfg(feature = "jiff")]
-            local.minute,
-            #[cfg(feature = "jiff")]
-            local.second,
-            #[cfg(feature = "jiff")]
-            local.millisecond,
-        );
-        Err(mf2_i18n::CoreError::Unsupported(
-            datetime_unsupported_message(),
-        ))
+            let local = self.local_datetime_parts(value)?;
+            let _ = (
+                value,
+                request,
+                parsed.style,
+                parsed.weekday,
+                parsed.month,
+                parsed.day,
+                parsed.year,
+                parsed.date_style,
+                parsed.time_style,
+                &self.locale,
+                self.hour_cycle,
+                #[cfg(feature = "jiff")]
+                local.year,
+                #[cfg(feature = "jiff")]
+                local.month,
+                #[cfg(feature = "jiff")]
+                local.day,
+                #[cfg(feature = "jiff")]
+                local.hour,
+                #[cfg(feature = "jiff")]
+                local.minute,
+                #[cfg(feature = "jiff")]
+                local.second,
+                #[cfg(feature = "jiff")]
+                local.millisecond,
+            );
+            Err(mf2_i18n::CoreError::Unsupported(
+                datetime_unsupported_message(),
+            ))
+        }
+    }
+
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn format_datetime_with_icu(
+        &self,
+        local: LocalDateTimeParts,
+        request: DateTimeRequest,
+        options: DateTimeOptions,
+    ) -> mf2_i18n::CoreResult<String> {
+        match select_icu_format(request, &options)? {
+            IcuDateTimeFormat::ShortTime => self.format_icu_short_time(local),
+            IcuDateTimeFormat::MediumDate => self.format_icu_medium_date(local),
+            IcuDateTimeFormat::LongWeekday => self.format_icu_long_weekday(local),
+            IcuDateTimeFormat::MediumMonthDay => self.format_icu_medium_month_day(local),
+            IcuDateTimeFormat::LongWeekdayDate => self.format_icu_long_weekday_date(local),
+            IcuDateTimeFormat::MediumDateShortTime => self.format_icu_medium_date_short_time(local),
+        }
+    }
+
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn icu_preferences(&self) -> mf2_i18n::CoreResult<icu_datetime::DateTimeFormatterPreferences> {
+        let locale = icu_locale::Locale::try_from_str(&self.locale)
+            .map_err(|_| mf2_i18n::CoreError::InvalidInput("invalid ICU locale"))?;
+        let mut preferences = icu_datetime::DateTimeFormatterPreferences::from(&locale);
+        preferences.hour_cycle = match self.hour_cycle {
+            HourCycle::LocaleDefault => preferences.hour_cycle,
+            HourCycle::H12 => Some(icu_datetime::preferences::HourCycle::H12),
+            HourCycle::H24 => Some(icu_datetime::preferences::HourCycle::H23),
+        };
+        Ok(preferences)
+    }
+
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn format_icu_short_time(&self, local: LocalDateTimeParts) -> mf2_i18n::CoreResult<String> {
+        let formatter = icu_datetime::NoCalendarFormatter::try_new(
+            self.icu_preferences()?,
+            icu_datetime::fieldsets::T::hm(),
+        )
+        .expect("compiled ICU datetime formatter data should load");
+        Ok(formatter.format(&icu_time(local)?).to_string())
+    }
+
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn format_icu_medium_date(&self, local: LocalDateTimeParts) -> mf2_i18n::CoreResult<String> {
+        let formatter = icu_datetime::DateTimeFormatter::try_new(
+            self.icu_preferences()?,
+            icu_datetime::fieldsets::YMD::medium(),
+        )
+        .expect("compiled ICU datetime formatter data should load");
+        Ok(formatter.format(&icu_date(local)?).to_string())
+    }
+
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn format_icu_long_weekday(&self, local: LocalDateTimeParts) -> mf2_i18n::CoreResult<String> {
+        let formatter = icu_datetime::DateTimeFormatter::try_new(
+            self.icu_preferences()?,
+            icu_datetime::fieldsets::E::long(),
+        )
+        .expect("compiled ICU datetime formatter data should load");
+        Ok(formatter.format(&icu_date(local)?).to_string())
+    }
+
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn format_icu_medium_month_day(
+        &self,
+        local: LocalDateTimeParts,
+    ) -> mf2_i18n::CoreResult<String> {
+        let formatter = icu_datetime::DateTimeFormatter::try_new(
+            self.icu_preferences()?,
+            icu_datetime::fieldsets::MD::medium(),
+        )
+        .expect("compiled ICU datetime formatter data should load");
+        Ok(formatter.format(&icu_date(local)?).to_string())
+    }
+
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn format_icu_long_weekday_date(
+        &self,
+        local: LocalDateTimeParts,
+    ) -> mf2_i18n::CoreResult<String> {
+        let formatter = icu_datetime::DateTimeFormatter::try_new(
+            self.icu_preferences()?,
+            icu_datetime::fieldsets::YMDE::long(),
+        )
+        .expect("compiled ICU datetime formatter data should load");
+        Ok(formatter.format(&icu_date(local)?).to_string())
+    }
+
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn format_icu_medium_date_short_time(
+        &self,
+        local: LocalDateTimeParts,
+    ) -> mf2_i18n::CoreResult<String> {
+        let formatter = icu_datetime::DateTimeFormatter::try_new(
+            self.icu_preferences()?,
+            icu_datetime::fieldsets::YMD::medium().with_time_hm(),
+        )
+        .expect("compiled ICU datetime formatter data should load");
+        Ok(formatter.format(&icu_datetime(local)?).to_string())
+    }
+
+    #[cfg(all(test, feature = "jiff", feature = "icu"))]
+    fn invalid_icu_locale_for_tests(&mut self) -> mf2_i18n::CoreResult<()> {
+        self.locale = "not locale".to_owned();
+        self.icu_preferences().map(|_| ())
     }
 
     #[cfg(feature = "jiff")]
@@ -91,10 +205,11 @@ impl TimelineDateBackend {
     }
 }
 
+#[cfg(any(not(feature = "icu"), not(feature = "jiff")))]
 pub(crate) fn datetime_unsupported_message() -> &'static str {
-    #[cfg(feature = "icu")]
+    #[cfg(all(feature = "icu", not(feature = "jiff")))]
     {
-        "timezone-aware datetime formatting is not implemented"
+        "datetime formatting requires the jiff feature for timezone conversion"
     }
     #[cfg(not(feature = "icu"))]
     {
@@ -223,6 +338,121 @@ fn timestamp_from_datetime_value(
     timestamp.map_err(|_| mf2_i18n::CoreError::InvalidInput("invalid datetime value"))
 }
 
+#[cfg(all(feature = "jiff", feature = "icu"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum IcuDateTimeFormat {
+    ShortTime,
+    MediumDate,
+    LongWeekday,
+    MediumMonthDay,
+    LongWeekdayDate,
+    MediumDateShortTime,
+}
+
+#[cfg(all(feature = "jiff", feature = "icu"))]
+fn select_icu_format(
+    request: DateTimeRequest,
+    options: &DateTimeOptions,
+) -> mf2_i18n::CoreResult<IcuDateTimeFormat> {
+    match (
+        request,
+        options.style,
+        options.weekday,
+        options.month,
+        options.day,
+        options.year,
+        options.date_style,
+        options.time_style,
+    ) {
+        (DateTimeRequest::Time, Some(DateTimeStyle::Short), None, None, None, None, None, None) => {
+            Ok(IcuDateTimeFormat::ShortTime)
+        }
+        (
+            DateTimeRequest::Date,
+            Some(DateTimeStyle::Medium),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ) => Ok(IcuDateTimeFormat::MediumDate),
+        (DateTimeRequest::DateTime, None, Some(TextWidth::Long), None, None, None, None, None) => {
+            Ok(IcuDateTimeFormat::LongWeekday)
+        }
+        (
+            DateTimeRequest::DateTime,
+            None,
+            None,
+            Some(MonthWidth::Short),
+            Some(NumericField::Numeric),
+            None,
+            None,
+            None,
+        ) => Ok(IcuDateTimeFormat::MediumMonthDay),
+        (
+            DateTimeRequest::DateTime,
+            None,
+            Some(TextWidth::Long),
+            Some(MonthWidth::Long),
+            Some(NumericField::Numeric),
+            Some(NumericField::Numeric),
+            None,
+            None,
+        ) => Ok(IcuDateTimeFormat::LongWeekdayDate),
+        (
+            DateTimeRequest::DateTime,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(DateTimeStyle::Medium),
+            Some(DateTimeStyle::Short),
+        ) => Ok(IcuDateTimeFormat::MediumDateShortTime),
+        _ => Err(mf2_i18n::CoreError::Unsupported(
+            "datetime formatter option combination not supported",
+        )),
+    }
+}
+
+#[cfg(all(feature = "jiff", feature = "icu"))]
+fn icu_date(
+    local: LocalDateTimeParts,
+) -> mf2_i18n::CoreResult<icu_datetime::input::Date<icu_calendar::Iso>> {
+    icu_datetime::input::Date::try_new_iso(
+        i32::from(local.year),
+        local.month as u8,
+        local.day as u8,
+    )
+    .map_err(|_| mf2_i18n::CoreError::InvalidInput("invalid local date"))
+}
+
+#[cfg(all(feature = "jiff", feature = "icu"))]
+fn icu_time(local: LocalDateTimeParts) -> mf2_i18n::CoreResult<icu_datetime::input::Time> {
+    let nanosecond = u32::try_from(local.millisecond)
+        .ok()
+        .and_then(|millisecond| millisecond.checked_mul(1_000_000))
+        .ok_or(mf2_i18n::CoreError::InvalidInput("invalid local time"))?;
+    icu_datetime::input::Time::try_new(
+        local.hour as u8,
+        local.minute as u8,
+        local.second as u8,
+        nanosecond,
+    )
+    .map_err(|_| mf2_i18n::CoreError::InvalidInput("invalid local time"))
+}
+
+#[cfg(all(feature = "jiff", feature = "icu"))]
+fn icu_datetime(
+    local: LocalDateTimeParts,
+) -> mf2_i18n::CoreResult<icu_datetime::input::DateTime<icu_calendar::Iso>> {
+    Ok(icu_datetime::input::DateTime {
+        date: icu_date(local)?,
+        time: icu_time(local)?,
+    })
+}
+
 fn parse_datetime_options(
     options: &[mf2_i18n::FormatterOption],
 ) -> mf2_i18n::CoreResult<DateTimeOptions> {
@@ -287,6 +517,10 @@ mod tests {
         DateTimeOptions, DateTimeStyle, MonthWidth, NumericField, TEXT_WIDTHS, TextWidth,
         TimelineDateBackend, parse_datetime_options, parse_one_of,
     };
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    use super::{
+        DateTimeRequest, IcuDateTimeFormat, icu_date, icu_datetime, icu_time, select_icu_format,
+    };
     #[cfg(feature = "jiff")]
     use super::{LocalDateTimeParts, timestamp_from_datetime_value};
     use crate::{HourCycle, TimelineDateError};
@@ -296,7 +530,6 @@ mod tests {
         let backend =
             TimelineDateBackend::new("en", "America/Vancouver", HourCycle::H24).expect("backend");
         assert_eq!(backend.locale, "en");
-        assert_eq!(backend.timezone, "America/Vancouver");
         assert_eq!(backend.hour_cycle, HourCycle::H24);
     }
 
@@ -518,6 +751,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(all(feature = "jiff", feature = "icu")))]
     fn date_time_and_datetime_return_explicit_unsupported() {
         let backend =
             TimelineDateBackend::new("en", "America/Vancouver", HourCycle::H12).expect("backend");
@@ -548,6 +782,258 @@ mod tests {
                 .expect_err("datetime"),
             expected
         );
+    }
+
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn select_icu_format_maps_catalog_option_shapes() {
+        let cases = [
+            (
+                DateTimeRequest::Time,
+                DateTimeOptions {
+                    style: Some(DateTimeStyle::Short),
+                    ..DateTimeOptions::default()
+                },
+                IcuDateTimeFormat::ShortTime,
+            ),
+            (
+                DateTimeRequest::Date,
+                DateTimeOptions {
+                    style: Some(DateTimeStyle::Medium),
+                    ..DateTimeOptions::default()
+                },
+                IcuDateTimeFormat::MediumDate,
+            ),
+            (
+                DateTimeRequest::DateTime,
+                DateTimeOptions {
+                    weekday: Some(TextWidth::Long),
+                    ..DateTimeOptions::default()
+                },
+                IcuDateTimeFormat::LongWeekday,
+            ),
+            (
+                DateTimeRequest::DateTime,
+                DateTimeOptions {
+                    month: Some(MonthWidth::Short),
+                    day: Some(NumericField::Numeric),
+                    ..DateTimeOptions::default()
+                },
+                IcuDateTimeFormat::MediumMonthDay,
+            ),
+            (
+                DateTimeRequest::DateTime,
+                DateTimeOptions {
+                    weekday: Some(TextWidth::Long),
+                    month: Some(MonthWidth::Long),
+                    day: Some(NumericField::Numeric),
+                    year: Some(NumericField::Numeric),
+                    ..DateTimeOptions::default()
+                },
+                IcuDateTimeFormat::LongWeekdayDate,
+            ),
+            (
+                DateTimeRequest::DateTime,
+                DateTimeOptions {
+                    date_style: Some(DateTimeStyle::Medium),
+                    time_style: Some(DateTimeStyle::Short),
+                    ..DateTimeOptions::default()
+                },
+                IcuDateTimeFormat::MediumDateShortTime,
+            ),
+        ];
+
+        for (request, options, expected) in cases {
+            assert_eq!(select_icu_format(request, &options), Ok(expected));
+        }
+    }
+
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn select_icu_format_rejects_off_catalog_option_shapes() {
+        let cases = [
+            (
+                DateTimeRequest::Time,
+                DateTimeOptions {
+                    style: Some(DateTimeStyle::Medium),
+                    ..DateTimeOptions::default()
+                },
+            ),
+            (
+                DateTimeRequest::Date,
+                DateTimeOptions {
+                    style: Some(DateTimeStyle::Short),
+                    ..DateTimeOptions::default()
+                },
+            ),
+            (
+                DateTimeRequest::DateTime,
+                DateTimeOptions {
+                    date_style: Some(DateTimeStyle::Short),
+                    time_style: Some(DateTimeStyle::Short),
+                    ..DateTimeOptions::default()
+                },
+            ),
+        ];
+
+        for (request, options) in cases {
+            assert_eq!(
+                select_icu_format(request, &options),
+                Err(mf2_i18n::CoreError::Unsupported(
+                    "datetime formatter option combination not supported"
+                ))
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn icu_conversions_reject_invalid_synthetic_parts() {
+        let valid = local_parts();
+        assert!(icu_date(valid).is_ok());
+        assert!(icu_time(valid).is_ok());
+        assert!(icu_datetime(valid).is_ok());
+
+        assert_eq!(
+            icu_date(LocalDateTimeParts { month: 13, ..valid }),
+            Err(mf2_i18n::CoreError::InvalidInput("invalid local date"))
+        );
+        assert_eq!(
+            icu_time(LocalDateTimeParts { hour: 24, ..valid }),
+            Err(mf2_i18n::CoreError::InvalidInput("invalid local time"))
+        );
+        assert_eq!(
+            icu_time(LocalDateTimeParts {
+                millisecond: -1,
+                ..valid
+            }),
+            Err(mf2_i18n::CoreError::InvalidInput("invalid local time"))
+        );
+    }
+
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn formats_supported_icu_datetime_shapes() {
+        let backend =
+            TimelineDateBackend::new("en", "America/Vancouver", HourCycle::H12).expect("backend");
+        let value = millis_value("2026-06-08T07:30:15.250Z");
+
+        let time = backend
+            .format_time(value, &[string_option("style", "short")])
+            .expect("time");
+        assert!(time.contains("12:30"));
+        assert!(time.contains("AM"));
+
+        let date = backend
+            .format_date(value, &[string_option("style", "medium")])
+            .expect("date");
+        assert_has_parts(&date, &["Jun", "8", "2026"]);
+
+        let weekday = backend
+            .format_datetime(value, &[string_option("weekday", "long")])
+            .expect("weekday");
+        assert_eq!(weekday, "Monday");
+
+        let month_day = backend
+            .format_datetime(
+                value,
+                &[
+                    string_option("month", "short"),
+                    string_option("day", "numeric"),
+                ],
+            )
+            .expect("month day");
+        assert_has_parts(&month_day, &["Jun", "8"]);
+
+        let detail_date = backend
+            .format_datetime(
+                value,
+                &[
+                    string_option("weekday", "long"),
+                    string_option("month", "long"),
+                    string_option("day", "numeric"),
+                    string_option("year", "numeric"),
+                ],
+            )
+            .expect("detail");
+        assert_has_parts(&detail_date, &["Monday", "June", "8", "2026"]);
+
+        let date_time = backend
+            .format_datetime(
+                value,
+                &[
+                    string_option("dateStyle", "medium"),
+                    string_option("timeStyle", "short"),
+                ],
+            )
+            .expect("datetime");
+        assert_has_parts(&date_time, &["Jun", "8", "2026", "12:30", "AM"]);
+    }
+
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn icu_time_formatting_honors_hour_cycle() {
+        let value = millis_value("2026-06-08T07:30:00Z");
+        let h12 = TimelineDateBackend::new("en", "America/Vancouver", HourCycle::H12)
+            .expect("h12 backend")
+            .format_time(value, &[string_option("style", "short")])
+            .expect("h12");
+        let h24 = TimelineDateBackend::new("en", "America/Vancouver", HourCycle::H24)
+            .expect("h24 backend")
+            .format_time(value, &[string_option("style", "short")])
+            .expect("h24");
+
+        assert!(h12.contains("12:30"));
+        assert!(h12.contains("AM"));
+        assert!(h24.contains("00:30"));
+        assert!(!h24.contains("AM"));
+    }
+
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn icu_backend_rejects_invalid_internal_locale() {
+        let mut backend =
+            TimelineDateBackend::new("en", "UTC", HourCycle::LocaleDefault).expect("backend");
+        assert_eq!(
+            backend.invalid_icu_locale_for_tests(),
+            Err(mf2_i18n::CoreError::InvalidInput("invalid ICU locale"))
+        );
+    }
+
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn backend_surfaces_unsupported_datetime_option_combinations() {
+        let backend =
+            TimelineDateBackend::new("en", "UTC", HourCycle::LocaleDefault).expect("backend");
+        let value = mf2_i18n::DateTimeValue::unix_milliseconds(0);
+
+        for (request, options) in [
+            (DateTimeRequest::Date, vec![string_option("style", "short")]),
+            (
+                DateTimeRequest::Time,
+                vec![string_option("style", "medium")],
+            ),
+            (
+                DateTimeRequest::DateTime,
+                vec![
+                    string_option("dateStyle", "short"),
+                    string_option("timeStyle", "short"),
+                ],
+            ),
+        ] {
+            let error = match request {
+                DateTimeRequest::Date => backend.format_date(value, &options),
+                DateTimeRequest::Time => backend.format_time(value, &options),
+                DateTimeRequest::DateTime => backend.format_datetime(value, &options),
+            }
+            .expect_err("unsupported combination");
+            assert_eq!(
+                error,
+                mf2_i18n::CoreError::Unsupported(
+                    "datetime formatter option combination not supported"
+                )
+            );
+        }
     }
 
     #[test]
@@ -604,6 +1090,26 @@ mod tests {
         FormatterOption {
             key: key.to_owned(),
             value: FormatterOptionValue::Num(value),
+        }
+    }
+
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn assert_has_parts(value: &str, parts: &[&str]) {
+        for part in parts {
+            assert!(value.contains(part), "{value:?} should contain {part:?}");
+        }
+    }
+
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn local_parts() -> LocalDateTimeParts {
+        LocalDateTimeParts {
+            year: 2026,
+            month: 6,
+            day: 8,
+            hour: 0,
+            minute: 30,
+            second: 15,
+            millisecond: 250,
         }
     }
 

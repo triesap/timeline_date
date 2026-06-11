@@ -5,6 +5,8 @@ pub(crate) struct TimelineDateBackend {
     timezone: String,
     hour_cycle: HourCycle,
     std_backend: mf2_i18n::StdFormatBackend,
+    #[cfg(feature = "jiff")]
+    timezone_data: jiff::tz::TimeZone,
 }
 
 impl TimelineDateBackend {
@@ -15,12 +17,16 @@ impl TimelineDateBackend {
     ) -> TimelineDateResult<Self> {
         let std_backend = mf2_i18n::StdFormatBackend::new(locale)
             .map_err(|error| TimelineDateError::InvalidLocale(error.to_string()))?;
+        #[cfg(feature = "jiff")]
+        let timezone_data = crate::time::timezone_from_id(timezone)?;
 
         Ok(Self {
             locale: locale.to_owned(),
             timezone: timezone.to_owned(),
             hour_cycle,
             std_backend,
+            #[cfg(feature = "jiff")]
+            timezone_data,
         })
     }
 
@@ -31,6 +37,8 @@ impl TimelineDateBackend {
         options: &[mf2_i18n::FormatterOption],
     ) -> mf2_i18n::CoreResult<String> {
         let parsed = parse_datetime_options(options)?;
+        #[cfg(feature = "jiff")]
+        let local = self.local_datetime_parts(value)?;
         let _ = (
             value,
             request,
@@ -44,10 +52,42 @@ impl TimelineDateBackend {
             &self.locale,
             &self.timezone,
             self.hour_cycle,
+            #[cfg(feature = "jiff")]
+            local.year,
+            #[cfg(feature = "jiff")]
+            local.month,
+            #[cfg(feature = "jiff")]
+            local.day,
+            #[cfg(feature = "jiff")]
+            local.hour,
+            #[cfg(feature = "jiff")]
+            local.minute,
+            #[cfg(feature = "jiff")]
+            local.second,
+            #[cfg(feature = "jiff")]
+            local.millisecond,
         );
         Err(mf2_i18n::CoreError::Unsupported(
             datetime_unsupported_message(),
         ))
+    }
+
+    #[cfg(feature = "jiff")]
+    fn local_datetime_parts(
+        &self,
+        value: mf2_i18n::DateTimeValue,
+    ) -> mf2_i18n::CoreResult<LocalDateTimeParts> {
+        let timestamp = timestamp_from_datetime_value(value)?;
+        let zoned = timestamp.to_zoned(self.timezone_data.clone());
+        Ok(LocalDateTimeParts {
+            year: zoned.year(),
+            month: zoned.month(),
+            day: zoned.day(),
+            hour: zoned.hour(),
+            minute: zoned.minute(),
+            second: zoned.second(),
+            millisecond: zoned.millisecond(),
+        })
     }
 }
 
@@ -158,6 +198,31 @@ struct DateTimeOptions {
     time_style: Option<DateTimeStyle>,
 }
 
+#[cfg(feature = "jiff")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct LocalDateTimeParts {
+    year: i16,
+    month: i8,
+    day: i8,
+    hour: i8,
+    minute: i8,
+    second: i8,
+    millisecond: i16,
+}
+
+#[cfg(feature = "jiff")]
+fn timestamp_from_datetime_value(
+    value: mf2_i18n::DateTimeValue,
+) -> mf2_i18n::CoreResult<jiff::Timestamp> {
+    let timestamp = match value {
+        mf2_i18n::DateTimeValue::UnixSeconds(value) => jiff::Timestamp::from_second(value),
+        mf2_i18n::DateTimeValue::UnixMilliseconds(value) => {
+            jiff::Timestamp::from_millisecond(value)
+        }
+    };
+    timestamp.map_err(|_| mf2_i18n::CoreError::InvalidInput("invalid datetime value"))
+}
+
 fn parse_datetime_options(
     options: &[mf2_i18n::FormatterOption],
 ) -> mf2_i18n::CoreResult<DateTimeOptions> {
@@ -222,6 +287,8 @@ mod tests {
         DateTimeOptions, DateTimeStyle, MonthWidth, NumericField, TEXT_WIDTHS, TextWidth,
         TimelineDateBackend, parse_datetime_options, parse_one_of,
     };
+    #[cfg(feature = "jiff")]
+    use super::{LocalDateTimeParts, timestamp_from_datetime_value};
     use crate::{HourCycle, TimelineDateError};
 
     #[test]
@@ -243,6 +310,15 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "jiff")]
+    fn new_rejects_invalid_timezone() {
+        assert!(matches!(
+            TimelineDateBackend::new("en", "Mars/Base", HourCycle::LocaleDefault),
+            Err(TimelineDateError::InvalidTimezone(timezone)) if timezone == "Mars/Base"
+        ));
+    }
+
+    #[test]
     fn delegates_plural_and_number_formatting() {
         let backend =
             TimelineDateBackend::new("en", "UTC", HourCycle::LocaleDefault).expect("backend");
@@ -253,6 +329,114 @@ mod tests {
         assert_eq!(
             backend.format_number(1234.5, &[]).expect("number"),
             "1,234.5"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "jiff")]
+    fn local_datetime_parts_convert_unix_milliseconds_in_timezone() {
+        let backend = TimelineDateBackend::new("en", "America/Vancouver", HourCycle::LocaleDefault)
+            .expect("backend");
+        assert_eq!(
+            backend
+                .local_datetime_parts(millis_value("2026-06-08T07:30:15.250Z"))
+                .expect("parts"),
+            LocalDateTimeParts {
+                year: 2026,
+                month: 6,
+                day: 8,
+                hour: 0,
+                minute: 30,
+                second: 15,
+                millisecond: 250,
+            }
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "jiff")]
+    fn local_datetime_parts_accept_unix_seconds() {
+        let backend = TimelineDateBackend::new("en", "Asia/Tokyo", HourCycle::LocaleDefault)
+            .expect("backend");
+        assert_eq!(
+            backend
+                .local_datetime_parts(mf2_i18n::DateTimeValue::unix_seconds(0))
+                .expect("parts"),
+            LocalDateTimeParts {
+                year: 1970,
+                month: 1,
+                day: 1,
+                hour: 9,
+                minute: 0,
+                second: 0,
+                millisecond: 0,
+            }
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "jiff")]
+    fn local_datetime_parts_preserve_local_date_when_utc_differs() {
+        let backend = TimelineDateBackend::new("en", "America/Vancouver", HourCycle::LocaleDefault)
+            .expect("backend");
+        let parts = backend
+            .local_datetime_parts(millis_value("2026-06-08T01:30:00Z"))
+            .expect("parts");
+        assert_eq!(
+            (parts.year, parts.month, parts.day, parts.hour, parts.minute),
+            (2026, 6, 7, 18, 30)
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "jiff")]
+    fn local_datetime_parts_cover_vancouver_dst_edges() {
+        let backend = TimelineDateBackend::new("en", "America/Vancouver", HourCycle::LocaleDefault)
+            .expect("backend");
+        let spring = backend
+            .local_datetime_parts(millis_value("2026-03-08T10:30:00Z"))
+            .expect("spring");
+        let fall = backend
+            .local_datetime_parts(millis_value("2026-11-01T09:30:00Z"))
+            .expect("fall");
+        assert_eq!(
+            (
+                spring.year,
+                spring.month,
+                spring.day,
+                spring.hour,
+                spring.minute
+            ),
+            (2026, 3, 8, 3, 30)
+        );
+        assert_eq!(
+            (fall.year, fall.month, fall.day, fall.hour, fall.minute),
+            (2026, 11, 1, 2, 30)
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "jiff")]
+    fn invalid_datetime_values_are_typed() {
+        assert_eq!(
+            timestamp_from_datetime_value(mf2_i18n::DateTimeValue::unix_milliseconds(i64::MAX)),
+            Err(mf2_i18n::CoreError::InvalidInput("invalid datetime value"))
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "jiff")]
+    fn format_datetime_request_propagates_invalid_timestamp() {
+        let backend = TimelineDateBackend::new("en", "America/Vancouver", HourCycle::LocaleDefault)
+            .expect("backend");
+        assert_eq!(
+            backend
+                .format_time(
+                    mf2_i18n::DateTimeValue::unix_milliseconds(i64::MAX),
+                    &[string_option("style", "short")],
+                )
+                .expect_err("invalid"),
+            mf2_i18n::CoreError::InvalidInput("invalid datetime value")
         );
     }
 
@@ -421,5 +605,15 @@ mod tests {
             key: key.to_owned(),
             value: FormatterOptionValue::Num(value),
         }
+    }
+
+    #[cfg(feature = "jiff")]
+    fn millis_value(value: &str) -> mf2_i18n::DateTimeValue {
+        mf2_i18n::DateTimeValue::unix_milliseconds(
+            value
+                .parse::<jiff::Timestamp>()
+                .expect("timestamp")
+                .as_millisecond(),
+        )
     }
 }

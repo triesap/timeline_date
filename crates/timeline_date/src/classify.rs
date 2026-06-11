@@ -16,6 +16,15 @@ pub(crate) fn classify_feed_millis(
 }
 
 #[cfg(feature = "jiff")]
+pub(crate) fn classify_fixed_millis(
+    event_unix_ms: i64,
+    bucket: TimelineDateBucket,
+) -> TimelineDateResult<TimelineDateBucket> {
+    time::timestamp_from_millis(event_unix_ms)?;
+    Ok(bucket)
+}
+
+#[cfg(feature = "jiff")]
 fn classify_feed_timestamps(
     event: jiff::Timestamp,
     now: jiff::Timestamp,
@@ -77,6 +86,16 @@ pub(crate) fn classify_feed_millis(
 ) -> TimelineDateResult<TimelineDateBucket> {
     Err(crate::TimelineDateError::FormattingUnsupported(
         "feed classification requires the jiff feature".to_owned(),
+    ))
+}
+
+#[cfg(not(feature = "jiff"))]
+pub(crate) fn classify_fixed_millis(
+    _event_unix_ms: i64,
+    _bucket: TimelineDateBucket,
+) -> TimelineDateResult<TimelineDateBucket> {
+    Err(crate::TimelineDateError::FormattingUnsupported(
+        "classification requires the jiff feature".to_owned(),
     ))
 }
 
@@ -217,16 +236,32 @@ mod tests {
     }
 
     #[test]
-    fn non_feed_styles_are_typed_until_policy_slice() {
+    fn detail_and_audit_have_explicit_buckets() {
         let formatter = formatter(0, "UTC");
-        let error = formatter
-            .classify_millis(0, TimelineDateStyle::Detail)
-            .expect_err("unsupported style");
         assert_eq!(
-            error,
-            TimelineDateError::FormattingUnsupported(
-                "classification policy for this style is not available".to_owned()
-            )
+            formatter
+                .classify_millis(0, TimelineDateStyle::Detail)
+                .expect("detail bucket"),
+            TimelineDateBucket::Detail
+        );
+        assert_eq!(
+            formatter
+                .classify_millis(0, TimelineDateStyle::Audit)
+                .expect("audit bucket"),
+            TimelineDateBucket::Audit
+        );
+    }
+
+    #[test]
+    fn detail_and_audit_validate_event_timestamp() {
+        let formatter = formatter(0, "UTC");
+        assert_eq!(
+            formatter.classify_millis(i64::MAX, TimelineDateStyle::Detail),
+            Err(TimelineDateError::InvalidTimestamp(i64::MAX))
+        );
+        assert_eq!(
+            formatter.classify_millis(i64::MAX, TimelineDateStyle::Audit),
+            Err(TimelineDateError::InvalidTimestamp(i64::MAX))
         );
     }
 }

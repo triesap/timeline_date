@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    TimelineDateBucket, TimelineDateError, TimelineDateOptions, TimelineDateResult,
-    TimelineDateStyle, classify, locale, time,
+    TimelineDateBucket, TimelineDateOptions, TimelineDateResult, TimelineDateStyle, classify,
+    locale, time,
 };
 
 #[derive(Clone, Debug)]
@@ -49,10 +49,11 @@ impl TimelineDateFormatter {
                 &self.inner.clock,
                 self.inner.options.future_policy,
             ),
-            TimelineDateStyle::Detail | TimelineDateStyle::Audit => {
-                Err(TimelineDateError::FormattingUnsupported(
-                    "classification policy for this style is not available".to_owned(),
-                ))
+            TimelineDateStyle::Detail => {
+                classify::classify_fixed_millis(event_unix_ms, TimelineDateBucket::Detail)
+            }
+            TimelineDateStyle::Audit => {
+                classify::classify_fixed_millis(event_unix_ms, TimelineDateBucket::Audit)
             }
         }
     }

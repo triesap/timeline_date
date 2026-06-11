@@ -1,0 +1,22 @@
+just_now = Just now
+
+minutes_ago = { $minutes:plural ->
+  [=1] {1 min ago}
+  *[other] {{ $minutes:number } min ago}
+}
+
+today_at_time = Today at { $event:time style=short }
+
+yesterday_at_time = Yesterday at { $event:time style=short }
+
+weekday_at_time = { $event:datetime weekday=long } at { $event:time style=short }
+
+same_year_at_time = { $event:datetime month=short day=numeric } at { $event:time style=short }
+
+older_date = { $event:date style=medium }
+
+future_at_datetime = { $event:datetime dateStyle=medium timeStyle=short }
+
+detail_datetime = { $event:datetime weekday=long month=long day=numeric year=numeric } at { $event:time style=short }
+
+audit_datetime = { $event:datetime dateStyle=medium timeStyle=short } { $timezone }

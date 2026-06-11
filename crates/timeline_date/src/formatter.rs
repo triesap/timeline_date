@@ -21,6 +21,8 @@ impl TimelineDateFormatter {
     pub fn new(options: TimelineDateOptions) -> TimelineDateResult<Self> {
         let selected_locale = locale::select_locale(&options.locale_preferences)?;
         let clock = time::ValidatedClock::new(options.now_unix_ms, &options.timezone)?;
+        #[cfg(feature = "mf2")]
+        crate::mf2::embedded_runtime()?;
         Ok(Self {
             inner: Arc::new(TimelineDateFormatterInner {
                 options,

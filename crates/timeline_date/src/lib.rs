@@ -5,6 +5,8 @@ mod classify;
 mod error;
 mod formatter;
 mod locale;
+#[cfg(feature = "mf2")]
+mod mf2;
 mod options;
 mod time;
 

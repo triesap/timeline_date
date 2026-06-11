@@ -1,15 +1,15 @@
 use crate::{TimelineDateError, TimelineDateResult};
 
+#[cfg(not(feature = "mf2"))]
 const DEFAULT_LOCALE: &str = "en";
-const SUPPORTED_LOCALES: [&str; 3] = ["en", "fr", "es"];
 
 #[cfg(feature = "mf2")]
 pub(crate) fn select_locale(preferences: &[String]) -> TimelineDateResult<String> {
     use mf2_i18n::negotiate_lookup;
 
     let requested = parse_requested(preferences)?;
-    let supported = supported_locales()?;
-    let default_locale = parse_locale(DEFAULT_LOCALE)?;
+    let supported = supported_locales(crate::mf2::SUPPORTED_LOCALES)?;
+    let default_locale = parse_locale(crate::mf2::DEFAULT_LOCALE)?;
     let negotiation = negotiate_lookup(&requested, &supported, &default_locale);
     Ok(negotiation.selected.normalized().to_owned())
 }
@@ -46,11 +46,8 @@ fn parse_requested(preferences: &[String]) -> TimelineDateResult<Vec<mf2_i18n::L
 }
 
 #[cfg(feature = "mf2")]
-fn supported_locales() -> TimelineDateResult<Vec<mf2_i18n::LanguageTag>> {
-    SUPPORTED_LOCALES
-        .iter()
-        .map(|locale| parse_locale(locale))
-        .collect()
+fn supported_locales(locales: &[&str]) -> TimelineDateResult<Vec<mf2_i18n::LanguageTag>> {
+    locales.iter().map(|locale| parse_locale(locale)).collect()
 }
 
 #[cfg(feature = "mf2")]

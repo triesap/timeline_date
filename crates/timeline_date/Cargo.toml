@@ -14,5 +14,24 @@ categories.workspace = true
 [lib]
 path = "src/lib.rs"
 
+[features]
+default = ["std", "jiff", "mf2", "icu"]
+std = []
+jiff = ["dep:jiff"]
+mf2 = []
+icu = ["dep:icu_datetime"]
+serde = ["dep:serde"]
+uniffi = ["dep:uniffi"]
+
+[dependencies]
+icu_datetime = { workspace = true, optional = true }
+jiff = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+thiserror = { workspace = true }
+uniffi = { workspace = true, optional = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+
 [lints]
 workspace = true

@@ -19,6 +19,15 @@ categories = ["date-and-time", "internationalization", "text-processing"]
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
+[workspace.dependencies]
+icu_datetime = "2.2.0"
+insta = "1.43"
+jiff = { version = "0.2.28", default-features = true }
+mf2_i18n = { git = "git@github.com:triesap/mf2_i18n.git", default-features = false, features = ["embedded", "runtime", "std_backend"] }
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"
+uniffi = "0.31.1"
+
 [profile.release]
 codegen-units = 1
 lto = true

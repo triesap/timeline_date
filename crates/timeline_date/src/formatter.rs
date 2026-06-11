@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     #[cfg(all(feature = "jiff", feature = "mf2", not(feature = "icu")))]
-    fn format_millis_maps_detail_and_audit_styles_to_backend_errors() {
+    fn format_millis_maps_detail_error_and_audit_stable_output() {
         let formatter =
             TimelineDateFormatter::new(TimelineDateOptions::new(0, "UTC")).expect("formatter");
         let detail = formatter
@@ -178,29 +178,227 @@ mod tests {
             .expect_err("detail");
         let audit = formatter
             .format_millis(0, crate::TimelineDateStyle::Audit)
-            .expect_err("audit");
+            .expect("audit");
         assert_eq!(detail, expected_datetime_format_error());
-        assert_eq!(audit, expected_datetime_format_error());
+        assert_eq!(audit, "1970-01-01T00:00:00.000 UTC");
     }
 
     #[test]
     #[cfg(all(feature = "jiff", feature = "mf2", feature = "icu"))]
     fn format_millis_formats_detail_and_audit_styles_with_icu() {
+        let event = ms("2026-06-08T12:00:00Z");
         let formatter =
-            TimelineDateFormatter::new(TimelineDateOptions::new(1_780_958_400_000, "UTC"))
-                .expect("formatter");
+            TimelineDateFormatter::new(TimelineDateOptions::new(event, "UTC")).expect("formatter");
         let detail = formatter
-            .format_millis(1_780_958_400_000, crate::TimelineDateStyle::Detail)
+            .format_millis(event, crate::TimelineDateStyle::Detail)
             .expect("detail");
         let audit = formatter
-            .format_millis(1_780_958_400_000, crate::TimelineDateStyle::Audit)
+            .format_millis(event, crate::TimelineDateStyle::Audit)
             .expect("audit");
 
         for part in ["Monday", "June", "8", "2026"] {
             assert!(detail.contains(part), "{detail:?} should contain {part:?}");
         }
-        for part in ["Jun", "8", "2026", "UTC"] {
-            assert!(audit.contains(part), "{audit:?} should contain {part:?}");
+        assert_eq!(audit, "2026-06-08T12:00:00.000 UTC");
+    }
+
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "mf2", feature = "icu"))]
+    fn localized_h24_goldens_cover_feed_detail_and_audit_surfaces() {
+        let cases = [
+            (
+                "en",
+                "2026-06-08T18:59:50Z",
+                crate::TimelineDateStyle::Feed,
+                "Just now",
+            ),
+            (
+                "en",
+                "2026-06-08T18:52:00Z",
+                crate::TimelineDateStyle::Feed,
+                "8 min ago",
+            ),
+            (
+                "en",
+                "2026-06-08T17:00:00Z",
+                crate::TimelineDateStyle::Feed,
+                "Today at 10:00",
+            ),
+            (
+                "en",
+                "2026-06-08T06:30:00Z",
+                crate::TimelineDateStyle::Feed,
+                "Yesterday at 23:30",
+            ),
+            (
+                "en",
+                "2026-06-02T19:00:00Z",
+                crate::TimelineDateStyle::Feed,
+                "Tuesday at 12:00",
+            ),
+            (
+                "en",
+                "2026-06-01T19:00:00Z",
+                crate::TimelineDateStyle::Feed,
+                "Jun 1 at 12:00",
+            ),
+            (
+                "en",
+                "2025-12-31T20:00:00Z",
+                crate::TimelineDateStyle::Feed,
+                "Dec 31, 2025",
+            ),
+            (
+                "en",
+                "2026-06-08T21:00:00Z",
+                crate::TimelineDateStyle::Feed,
+                "Jun 8, 2026, 14:00",
+            ),
+            (
+                "en",
+                "2026-06-08T19:00:00Z",
+                crate::TimelineDateStyle::Detail,
+                "Monday, June 8, 2026 at 12:00",
+            ),
+            (
+                "en",
+                "2026-06-08T19:00:00.250Z",
+                crate::TimelineDateStyle::Audit,
+                "2026-06-08T12:00:00.250 America/Vancouver",
+            ),
+            (
+                "es",
+                "2026-06-08T18:59:50Z",
+                crate::TimelineDateStyle::Feed,
+                "Ahora mismo",
+            ),
+            (
+                "es",
+                "2026-06-08T18:52:00Z",
+                crate::TimelineDateStyle::Feed,
+                "hace 8 min",
+            ),
+            (
+                "es",
+                "2026-06-08T17:00:00Z",
+                crate::TimelineDateStyle::Feed,
+                "Hoy a las 10:00",
+            ),
+            (
+                "es",
+                "2026-06-08T06:30:00Z",
+                crate::TimelineDateStyle::Feed,
+                "Ayer a las 23:30",
+            ),
+            (
+                "es",
+                "2026-06-02T19:00:00Z",
+                crate::TimelineDateStyle::Feed,
+                "martes a las 12:00",
+            ),
+            (
+                "es",
+                "2026-06-01T19:00:00Z",
+                crate::TimelineDateStyle::Feed,
+                "1 jun a las 12:00",
+            ),
+            (
+                "es",
+                "2025-12-31T20:00:00Z",
+                crate::TimelineDateStyle::Feed,
+                "31 dic 2025",
+            ),
+            (
+                "es",
+                "2026-06-08T21:00:00Z",
+                crate::TimelineDateStyle::Feed,
+                "8 jun 2026, 14:00",
+            ),
+            (
+                "es",
+                "2026-06-08T19:00:00Z",
+                crate::TimelineDateStyle::Detail,
+                "lunes, 8 de junio de 2026 a las 12:00",
+            ),
+            (
+                "es",
+                "2026-06-08T19:00:00.250Z",
+                crate::TimelineDateStyle::Audit,
+                "2026-06-08T12:00:00.250 America/Vancouver",
+            ),
+            (
+                "fr",
+                "2026-06-08T18:59:50Z",
+                crate::TimelineDateStyle::Feed,
+                "A l'instant",
+            ),
+            (
+                "fr",
+                "2026-06-08T18:52:00Z",
+                crate::TimelineDateStyle::Feed,
+                "il y a 8 min",
+            ),
+            (
+                "fr",
+                "2026-06-08T17:00:00Z",
+                crate::TimelineDateStyle::Feed,
+                "Aujourd'hui a 10:00",
+            ),
+            (
+                "fr",
+                "2026-06-08T06:30:00Z",
+                crate::TimelineDateStyle::Feed,
+                "Hier a 23:30",
+            ),
+            (
+                "fr",
+                "2026-06-02T19:00:00Z",
+                crate::TimelineDateStyle::Feed,
+                "mardi a 12:00",
+            ),
+            (
+                "fr",
+                "2026-06-01T19:00:00Z",
+                crate::TimelineDateStyle::Feed,
+                "1 juin a 12:00",
+            ),
+            (
+                "fr",
+                "2025-12-31T20:00:00Z",
+                crate::TimelineDateStyle::Feed,
+                "31 d\u{e9}c. 2025",
+            ),
+            (
+                "fr",
+                "2026-06-08T21:00:00Z",
+                crate::TimelineDateStyle::Feed,
+                "8 juin 2026, 14:00",
+            ),
+            (
+                "fr",
+                "2026-06-08T19:00:00Z",
+                crate::TimelineDateStyle::Detail,
+                "lundi 8 juin 2026 a 12:00",
+            ),
+            (
+                "fr",
+                "2026-06-08T19:00:00.250Z",
+                crate::TimelineDateStyle::Audit,
+                "2026-06-08T12:00:00.250 America/Vancouver",
+            ),
+        ];
+
+        for (locale, event, style, expected) in cases {
+            let formatter = TimelineDateFormatter::new(
+                TimelineDateOptions::new(ms("2026-06-08T19:00:00Z"), "America/Vancouver")
+                    .with_locale_preferences([locale])
+                    .with_hour_cycle(HourCycle::H24),
+            )
+            .expect("formatter");
+            assert_eq!(
+                formatter.format_millis(ms(event), style).expect("label"),
+                expected
+            );
         }
     }
 
@@ -257,5 +455,13 @@ mod tests {
             "unsupported: {}",
             crate::backend::datetime_unsupported_message()
         ))
+    }
+
+    #[cfg(all(feature = "jiff", feature = "mf2", feature = "icu"))]
+    fn ms(value: &str) -> i64 {
+        value
+            .parse::<jiff::Timestamp>()
+            .expect("timestamp")
+            .as_millisecond()
     }
 }

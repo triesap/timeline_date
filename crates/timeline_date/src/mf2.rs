@@ -30,7 +30,7 @@ fn format_selected(
     bucket: TimelineDateBucket,
 ) -> TimelineDateResult<String> {
     let key = message_key(style, bucket)?;
-    let args = message_args(event_unix_ms, style, bucket, timezone);
+    let args = message_args(event_unix_ms, style, bucket, timezone)?;
     let backend = crate::backend::TimelineDateBackend::new(selected_locale, timezone, hour_cycle)?;
     format_key_with_backend(embedded_runtime()?, selected_locale, key, &args, &backend)
 }
@@ -67,7 +67,7 @@ fn message_args(
     style: TimelineDateStyle,
     bucket: TimelineDateBucket,
     timezone: &str,
-) -> mf2_i18n::Args {
+) -> TimelineDateResult<mf2_i18n::Args> {
     let mut args = mf2_i18n::Args::new();
 
     if message_uses_event(style, bucket) {
@@ -84,15 +84,20 @@ fn message_args(
     }
 
     if matches!(style, TimelineDateStyle::Audit) {
+        args.insert(
+            "auditTimestamp",
+            mf2_i18n::Value::Str(audit_timestamp_millis(event_unix_ms, timezone)?),
+        );
         args.insert("timezone", mf2_i18n::Value::Str(timezone.to_owned()));
     }
 
-    args
+    Ok(args)
 }
 
 fn message_uses_event(style: TimelineDateStyle, bucket: TimelineDateBucket) -> bool {
     match style {
-        TimelineDateStyle::Detail | TimelineDateStyle::Audit => true,
+        TimelineDateStyle::Detail => true,
+        TimelineDateStyle::Audit => false,
         TimelineDateStyle::Feed => matches!(
             bucket,
             TimelineDateBucket::Today
@@ -103,6 +108,30 @@ fn message_uses_event(style: TimelineDateStyle, bucket: TimelineDateBucket) -> b
                 | TimelineDateBucket::Future
         ),
     }
+}
+
+#[cfg(feature = "jiff")]
+fn audit_timestamp_millis(event_unix_ms: i64, timezone: &str) -> TimelineDateResult<String> {
+    let timestamp = crate::time::timestamp_from_millis(event_unix_ms)?;
+    let timezone_data = crate::time::timezone_from_id(timezone)?;
+    let local = timestamp.to_zoned(timezone_data);
+    Ok(format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}",
+        local.year(),
+        local.month(),
+        local.day(),
+        local.hour(),
+        local.minute(),
+        local.second(),
+        local.millisecond()
+    ))
+}
+
+#[cfg(not(feature = "jiff"))]
+fn audit_timestamp_millis(_event_unix_ms: i64, _timezone: &str) -> TimelineDateResult<String> {
+    Err(TimelineDateError::FormattingUnsupported(
+        "audit formatting requires the jiff feature".to_owned(),
+    ))
 }
 
 fn format_key_with_backend(
@@ -163,6 +192,10 @@ mod tests {
             mf2_i18n::Value::DateTime(mf2_i18n::DateTimeValue::unix_milliseconds(0)),
         );
         args.insert("minutes", mf2_i18n::Value::Num(2.0));
+        args.insert(
+            "auditTimestamp",
+            mf2_i18n::Value::Str("1970-01-01T00:00:00.000".to_owned()),
+        );
         args.insert("timezone", mf2_i18n::Value::Str("UTC".to_owned()));
 
         for locale in SUPPORTED_LOCALES {
@@ -247,20 +280,24 @@ mod tests {
             TimelineDateStyle::Feed,
             TimelineDateBucket::JustNow,
             "UTC",
-        );
+        )
+        .expect("just now args");
         assert!(just_now.get("event").is_none());
         assert!(just_now.get("minutes").is_none());
         assert!(just_now.get("timezone").is_none());
+        assert!(just_now.get("auditTimestamp").is_none());
 
         let minutes = message_args(
             42,
             TimelineDateStyle::Feed,
             TimelineDateBucket::MinutesAgo { minutes: 8 },
             "UTC",
-        );
+        )
+        .expect("minutes args");
         assert!(minutes.get("event").is_none());
         assert!(has_number_arg(&minutes, "minutes", 8.0));
         assert!(minutes.get("timezone").is_none());
+        assert!(minutes.get("auditTimestamp").is_none());
 
         for bucket in [
             TimelineDateBucket::Today,
@@ -270,10 +307,11 @@ mod tests {
             TimelineDateBucket::Older,
             TimelineDateBucket::Future,
         ] {
-            let args = message_args(42, TimelineDateStyle::Feed, bucket, "UTC");
+            let args = message_args(42, TimelineDateStyle::Feed, bucket, "UTC").expect("feed args");
             assert!(has_datetime_arg(&args, "event", 42));
             assert!(args.get("minutes").is_none());
             assert!(args.get("timezone").is_none());
+            assert!(args.get("auditTimestamp").is_none());
         }
 
         let detail = message_args(
@@ -281,20 +319,56 @@ mod tests {
             TimelineDateStyle::Detail,
             TimelineDateBucket::Detail,
             "UTC",
-        );
+        )
+        .expect("detail args");
         assert!(has_datetime_arg(&detail, "event", 42));
         assert!(detail.get("minutes").is_none());
         assert!(detail.get("timezone").is_none());
+        assert!(detail.get("auditTimestamp").is_none());
 
-        let audit = message_args(
-            42,
-            TimelineDateStyle::Audit,
-            TimelineDateBucket::Audit,
-            "America/Vancouver",
+        #[cfg(feature = "jiff")]
+        {
+            let audit = message_args(
+                ms("2026-06-08T19:00:00.250Z"),
+                TimelineDateStyle::Audit,
+                TimelineDateBucket::Audit,
+                "America/Vancouver",
+            )
+            .expect("audit args");
+            assert!(audit.get("event").is_none());
+            assert!(audit.get("minutes").is_none());
+            assert!(has_string_arg(&audit, "timezone", "America/Vancouver"));
+            assert!(has_string_arg(
+                &audit,
+                "auditTimestamp",
+                "2026-06-08T12:00:00.250"
+            ));
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "jiff")]
+    fn audit_args_reject_invalid_timestamp_and_timezone() {
+        assert_eq!(
+            message_args(
+                i64::MAX,
+                TimelineDateStyle::Audit,
+                TimelineDateBucket::Audit,
+                "UTC",
+            )
+            .err(),
+            Some(TimelineDateError::InvalidTimestamp(i64::MAX))
         );
-        assert!(has_datetime_arg(&audit, "event", 42));
-        assert!(audit.get("minutes").is_none());
-        assert!(has_string_arg(&audit, "timezone", "America/Vancouver"));
+        assert_eq!(
+            message_args(
+                0,
+                TimelineDateStyle::Audit,
+                TimelineDateBucket::Audit,
+                "Mars/Base",
+            )
+            .err(),
+            Some(TimelineDateError::InvalidTimezone("Mars/Base".to_owned()))
+        );
     }
 
     #[test]
@@ -324,7 +398,8 @@ mod tests {
             TimelineDateStyle::Feed,
             TimelineDateBucket::Today,
             "UTC",
-        );
+        )
+        .expect("args");
         let error = format_key_with_backend(
             runtime,
             "en",
@@ -410,5 +485,13 @@ mod tests {
 
     fn has_string_arg(args: &mf2_i18n::Args, name: &str, expected: &str) -> bool {
         matches!(args.get(name), Some(mf2_i18n::Value::Str(value)) if value == expected)
+    }
+
+    #[cfg(feature = "jiff")]
+    fn ms(value: &str) -> i64 {
+        value
+            .parse::<jiff::Timestamp>()
+            .expect("timestamp")
+            .as_millisecond()
     }
 }

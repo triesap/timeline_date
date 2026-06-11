@@ -19,4 +19,4 @@ future_at_datetime = { $event:datetime dateStyle=medium timeStyle=short }
 
 detail_datetime = { $event:datetime weekday=long day=numeric month=long year=numeric } a las { $event:time style=short }
 
-audit_datetime = { $event:datetime dateStyle=medium timeStyle=short } { $timezone }
+audit_datetime = { $auditTimestamp } { $timezone }

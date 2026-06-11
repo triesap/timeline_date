@@ -972,21 +972,34 @@ mod tests {
 
     #[test]
     #[cfg(all(feature = "jiff", feature = "icu"))]
-    fn icu_time_formatting_honors_hour_cycle() {
+    fn icu_time_formatting_honors_locale_default_hour_cycles() {
         let value = millis_value("2026-06-08T07:30:00Z");
-        let h12 = TimelineDateBackend::new("en", "America/Vancouver", HourCycle::H12)
-            .expect("h12 backend")
-            .format_time(value, &[string_option("style", "short")])
-            .expect("h12");
-        let h24 = TimelineDateBackend::new("en", "America/Vancouver", HourCycle::H24)
-            .expect("h24 backend")
-            .format_time(value, &[string_option("style", "short")])
-            .expect("h24");
+        let english = format_short_time("en", HourCycle::LocaleDefault, value);
+        let french = format_short_time("fr", HourCycle::LocaleDefault, value);
+        let spanish = format_short_time("es", HourCycle::LocaleDefault, value);
 
-        assert!(h12.contains("12:30"));
-        assert!(h12.contains("AM"));
-        assert!(h24.contains("00:30"));
-        assert!(!h24.contains("AM"));
+        assert!(english.contains("12:30"));
+        assert!(english.contains("AM"));
+        assert!(french.contains("00:30"));
+        assert_lacks_day_period(&french);
+        assert!(spanish.starts_with('0'));
+        assert!(spanish.contains(":30"));
+        assert_lacks_day_period(&spanish);
+    }
+
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn icu_time_formatting_honors_explicit_hour_cycles() {
+        let value = millis_value("2026-06-08T07:30:00Z");
+
+        for locale in ["en", "fr", "es"] {
+            let h12 = format_short_time(locale, HourCycle::H12, value);
+            let h24 = format_short_time(locale, HourCycle::H24, value);
+
+            assert!(h12.contains("12:30"));
+            assert!(h24.contains("00:30"));
+            assert_lacks_day_period(&h24);
+        }
     }
 
     #[test]
@@ -1098,6 +1111,28 @@ mod tests {
         for part in parts {
             assert!(value.contains(part), "{value:?} should contain {part:?}");
         }
+    }
+
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn assert_lacks_day_period(value: &str) {
+        for part in ["AM", "PM", "a. m.", "p. m."] {
+            assert!(
+                !value.contains(part),
+                "{value:?} should not contain {part:?}"
+            );
+        }
+    }
+
+    #[cfg(all(feature = "jiff", feature = "icu"))]
+    fn format_short_time(
+        locale: &str,
+        hour_cycle: HourCycle,
+        value: mf2_i18n::DateTimeValue,
+    ) -> String {
+        TimelineDateBackend::new(locale, "America/Vancouver", hour_cycle)
+            .expect("backend")
+            .format_time(value, &[string_option("style", "short")])
+            .expect("time")
     }
 
     #[cfg(all(feature = "jiff", feature = "icu"))]

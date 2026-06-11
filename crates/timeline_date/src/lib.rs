@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod bucket;
+mod classify;
 mod error;
 mod formatter;
 mod locale;

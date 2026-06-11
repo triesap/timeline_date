@@ -3,17 +3,25 @@ use crate::{TimelineDateError, TimelineDateResult};
 #[cfg(feature = "jiff")]
 #[derive(Clone, Debug)]
 pub(crate) struct ValidatedClock {
-    _timezone: jiff::tz::TimeZone,
-    _now: jiff::Timestamp,
+    timezone: jiff::tz::TimeZone,
+    now: jiff::Timestamp,
 }
 
 #[cfg(feature = "jiff")]
 impl ValidatedClock {
     pub(crate) fn new(now_unix_ms: i64, timezone_id: &str) -> TimelineDateResult<Self> {
         Ok(Self {
-            _timezone: timezone_from_id(timezone_id)?,
-            _now: timestamp_from_millis(now_unix_ms)?,
+            timezone: timezone_from_id(timezone_id)?,
+            now: timestamp_from_millis(now_unix_ms)?,
         })
+    }
+
+    pub(crate) fn timezone(&self) -> jiff::tz::TimeZone {
+        self.timezone.clone()
+    }
+
+    pub(crate) fn now(&self) -> jiff::Timestamp {
+        self.now
     }
 }
 
@@ -103,11 +111,11 @@ mod tests {
     fn cloned_clock_keeps_validated_state() {
         let clock = ValidatedClock::new(0, "UTC").expect("clock");
         let cloned = clock.clone();
-        assert_eq!(cloned._now.as_millisecond(), 0);
+        assert_eq!(cloned.now.as_millisecond(), 0);
         assert_eq!(
             jiff::Timestamp::from_millisecond(0)
                 .expect("timestamp")
-                .to_zoned(cloned._timezone)
+                .to_zoned(cloned.timezone)
                 .year(),
             1970
         );

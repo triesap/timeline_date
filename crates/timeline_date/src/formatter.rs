@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use crate::{TimelineDateOptions, TimelineDateResult, locale, time};
+use crate::{
+    TimelineDateBucket, TimelineDateError, TimelineDateOptions, TimelineDateResult,
+    TimelineDateStyle, classify, locale, time,
+};
 
 #[derive(Clone, Debug)]
 pub struct TimelineDateFormatter {
@@ -11,7 +14,7 @@ pub struct TimelineDateFormatter {
 struct TimelineDateFormatterInner {
     options: TimelineDateOptions,
     selected_locale: String,
-    _clock: time::ValidatedClock,
+    clock: time::ValidatedClock,
 }
 
 impl TimelineDateFormatter {
@@ -22,7 +25,7 @@ impl TimelineDateFormatter {
             inner: Arc::new(TimelineDateFormatterInner {
                 options,
                 selected_locale,
-                _clock: clock,
+                clock,
             }),
         })
     }
@@ -33,6 +36,25 @@ impl TimelineDateFormatter {
 
     pub fn selected_locale(&self) -> &str {
         &self.inner.selected_locale
+    }
+
+    pub fn classify_millis(
+        &self,
+        event_unix_ms: i64,
+        style: TimelineDateStyle,
+    ) -> TimelineDateResult<TimelineDateBucket> {
+        match style {
+            TimelineDateStyle::Feed => classify::classify_feed_millis(
+                event_unix_ms,
+                &self.inner.clock,
+                self.inner.options.future_policy,
+            ),
+            TimelineDateStyle::Detail | TimelineDateStyle::Audit => {
+                Err(TimelineDateError::FormattingUnsupported(
+                    "classification policy for this style is not available".to_owned(),
+                ))
+            }
+        }
     }
 }
 

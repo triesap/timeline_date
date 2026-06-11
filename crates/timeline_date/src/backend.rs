@@ -46,8 +46,19 @@ impl TimelineDateBackend {
             self.hour_cycle,
         );
         Err(mf2_i18n::CoreError::Unsupported(
-            "timezone-aware datetime formatting is not implemented",
+            datetime_unsupported_message(),
         ))
+    }
+}
+
+pub(crate) fn datetime_unsupported_message() -> &'static str {
+    #[cfg(feature = "icu")]
+    {
+        "timezone-aware datetime formatting is not implemented"
+    }
+    #[cfg(not(feature = "icu"))]
+    {
+        "datetime formatting requires the icu feature for localized output"
     }
 }
 
@@ -327,9 +338,7 @@ mod tests {
         let backend =
             TimelineDateBackend::new("en", "America/Vancouver", HourCycle::H12).expect("backend");
         let value = mf2_i18n::DateTimeValue::unix_milliseconds(0);
-        let expected = mf2_i18n::CoreError::Unsupported(
-            "timezone-aware datetime formatting is not implemented",
-        );
+        let expected = mf2_i18n::CoreError::Unsupported(super::datetime_unsupported_message());
 
         assert_eq!(
             backend
@@ -370,6 +379,25 @@ mod tests {
         assert_eq!(
             error,
             mf2_i18n::CoreError::Unsupported("datetime formatter option not supported")
+        );
+    }
+
+    #[test]
+    #[cfg(not(feature = "icu"))]
+    fn reduced_mode_datetime_error_names_icu_feature() {
+        let backend =
+            TimelineDateBackend::new("en", "UTC", HourCycle::LocaleDefault).expect("backend");
+        let error = backend
+            .format_time(
+                mf2_i18n::DateTimeValue::unix_milliseconds(0),
+                &[string_option("style", "short")],
+            )
+            .expect_err("time");
+        assert_eq!(
+            error,
+            mf2_i18n::CoreError::Unsupported(
+                "datetime formatting requires the icu feature for localized output"
+            )
         );
     }
 

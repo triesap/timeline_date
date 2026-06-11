@@ -179,18 +179,8 @@ mod tests {
         let audit = formatter
             .format_millis(0, crate::TimelineDateStyle::Audit)
             .expect_err("audit");
-        assert_eq!(
-            detail,
-            TimelineDateError::I18nFormat(
-                "unsupported: timezone-aware datetime formatting is not implemented".to_owned()
-            )
-        );
-        assert_eq!(
-            audit,
-            TimelineDateError::I18nFormat(
-                "unsupported: timezone-aware datetime formatting is not implemented".to_owned()
-            )
-        );
+        assert_eq!(detail, expected_datetime_format_error());
+        assert_eq!(audit, expected_datetime_format_error());
     }
 
     #[test]
@@ -202,5 +192,48 @@ mod tests {
             .format_millis(i64::MAX, crate::TimelineDateStyle::Feed)
             .expect_err("invalid event");
         assert_eq!(error, TimelineDateError::InvalidTimestamp(i64::MAX));
+    }
+
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "mf2", not(feature = "icu")))]
+    fn reduced_mode_formats_text_only_feed_messages() {
+        let formatter = TimelineDateFormatter::new(TimelineDateOptions::new(600_000, "UTC"))
+            .expect("formatter");
+        assert_eq!(
+            formatter
+                .format_millis(590_000, crate::TimelineDateStyle::Feed)
+                .expect("just now"),
+            "Just now"
+        );
+        assert_eq!(
+            formatter
+                .format_millis(120_000, crate::TimelineDateStyle::Feed)
+                .expect("minutes"),
+            "8 min ago"
+        );
+    }
+
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "mf2", not(feature = "icu")))]
+    fn reduced_mode_date_time_formatting_is_typed() {
+        let formatter =
+            TimelineDateFormatter::new(TimelineDateOptions::new(0, "UTC")).expect("formatter");
+        let error = formatter
+            .format_millis(0, crate::TimelineDateStyle::Detail)
+            .expect_err("detail");
+        assert_eq!(
+            error,
+            TimelineDateError::I18nFormat(
+                "unsupported: datetime formatting requires the icu feature for localized output"
+                    .to_owned()
+            )
+        );
+    }
+
+    fn expected_datetime_format_error() -> TimelineDateError {
+        TimelineDateError::I18nFormat(format!(
+            "unsupported: {}",
+            crate::backend::datetime_unsupported_message()
+        ))
     }
 }

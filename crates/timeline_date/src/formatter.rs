@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{TimelineDateOptions, TimelineDateResult, locale};
+use crate::{TimelineDateOptions, TimelineDateResult, locale, time};
 
 #[derive(Clone, Debug)]
 pub struct TimelineDateFormatter {
@@ -11,15 +11,18 @@ pub struct TimelineDateFormatter {
 struct TimelineDateFormatterInner {
     options: TimelineDateOptions,
     selected_locale: String,
+    _clock: time::ValidatedClock,
 }
 
 impl TimelineDateFormatter {
     pub fn new(options: TimelineDateOptions) -> TimelineDateResult<Self> {
         let selected_locale = locale::select_locale(&options.locale_preferences)?;
+        let clock = time::ValidatedClock::new(options.now_unix_ms, &options.timezone)?;
         Ok(Self {
             inner: Arc::new(TimelineDateFormatterInner {
                 options,
                 selected_locale,
+                _clock: clock,
             }),
         })
     }
@@ -39,7 +42,7 @@ mod tests {
     use crate::{HourCycle, TimelineDateError, TimelineDateOptions};
 
     #[test]
-    #[cfg(feature = "mf2")]
+    #[cfg(all(feature = "jiff", feature = "mf2"))]
     fn new_stores_options() {
         let options = TimelineDateOptions::new(1_780_958_400_000, "America/Vancouver")
             .with_locale_preferences(["fr-CA", "fr"])
@@ -50,6 +53,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "jiff")]
     fn cloned_formatter_keeps_options() {
         let options = TimelineDateOptions::new(1, "UTC");
         let formatter = TimelineDateFormatter::new(options.clone()).expect("formatter");
@@ -59,7 +63,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "mf2")]
+    #[cfg(all(feature = "jiff", feature = "mf2"))]
     fn independent_formatters_keep_selected_locale() {
         let french = TimelineDateFormatter::new(
             TimelineDateOptions::new(1, "UTC").with_locale_preferences(["fr-CA"]),
@@ -81,10 +85,29 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "mf2")]
+    #[cfg(all(feature = "jiff", feature = "mf2"))]
     fn new_rejects_malformed_locale() {
         let options = TimelineDateOptions::new(1, "UTC").with_locale_preferences(["en--US"]);
         let error = TimelineDateFormatter::new(options).expect_err("invalid locale");
         assert_eq!(error, TimelineDateError::InvalidLocale("en--US".to_owned()));
+    }
+
+    #[test]
+    #[cfg(feature = "jiff")]
+    fn new_rejects_invalid_timezone() {
+        let options = TimelineDateOptions::new(1, "Mars/Base");
+        let error = TimelineDateFormatter::new(options).expect_err("invalid timezone");
+        assert_eq!(
+            error,
+            TimelineDateError::InvalidTimezone("Mars/Base".to_owned())
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "jiff")]
+    fn new_rejects_invalid_now_timestamp() {
+        let options = TimelineDateOptions::new(i64::MAX, "UTC");
+        let error = TimelineDateFormatter::new(options).expect_err("invalid timestamp");
+        assert_eq!(error, TimelineDateError::InvalidTimestamp(i64::MAX));
     }
 }

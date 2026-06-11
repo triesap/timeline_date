@@ -3,6 +3,7 @@
 mod bucket;
 mod error;
 mod formatter;
+mod locale;
 mod options;
 
 pub use bucket::TimelineDateBucket;

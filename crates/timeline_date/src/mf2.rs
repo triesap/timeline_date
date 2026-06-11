@@ -123,7 +123,10 @@ mod tests {
         DEFAULT_LOCALE, SUPPORTED_LOCALES, embedded_runtime, format_key_with_backend,
         format_selected, message_args, message_key,
     };
-    use crate::{HourCycle, TimelineDateBucket, TimelineDateError, TimelineDateStyle};
+    use crate::{
+        HourCycle, TimelineDateBucket, TimelineDateError, TimelineDateFormatter,
+        TimelineDateOptions, TimelineDateStyle,
+    };
 
     const MESSAGE_KEYS: [&str; 10] = [
         "timeline_date.just_now",
@@ -136,6 +139,12 @@ mod tests {
         "timeline_date.future_at_datetime",
         "timeline_date.detail_datetime",
         "timeline_date.audit_datetime",
+    ];
+
+    const CATALOG_SOURCES: [&str; 3] = [
+        include_str!("../i18n/locales/en/timeline_date.mf2"),
+        include_str!("../i18n/locales/es/timeline_date.mf2"),
+        include_str!("../i18n/locales/fr/timeline_date.mf2"),
     ];
 
     #[test]
@@ -330,6 +339,43 @@ mod tests {
                 "unsupported: time formatting requires a format backend".to_owned()
             )
         );
+    }
+
+    #[test]
+    fn exact_numeric_plural_strategy_formats_singular_and_plural_labels() {
+        let cases = [
+            ("en", "1 min ago", "2 min ago"),
+            ("es", "hace 1 min", "hace 2 min"),
+            ("fr", "il y a 1 min", "il y a 2 min"),
+        ];
+
+        for (locale, singular, plural) in cases {
+            let formatter = TimelineDateFormatter::new(
+                TimelineDateOptions::new(120_000, "UTC").with_locale_preferences([locale]),
+            )
+            .expect("formatter");
+            assert_eq!(
+                formatter
+                    .format_millis(60_000, TimelineDateStyle::Feed)
+                    .expect("singular"),
+                singular
+            );
+            assert_eq!(
+                formatter
+                    .format_millis(0, TimelineDateStyle::Feed)
+                    .expect("plural"),
+                plural
+            );
+        }
+    }
+
+    #[test]
+    fn bundled_catalogs_do_not_use_category_plural_cases() {
+        for source in CATALOG_SOURCES {
+            for forbidden in ["[zero]", "[one]", "[two]", "[few]", "[many]"] {
+                assert!(!source.contains(forbidden));
+            }
+        }
     }
 
     #[test]

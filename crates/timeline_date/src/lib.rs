@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod backend;
 mod bucket;
 mod classify;
 mod error;

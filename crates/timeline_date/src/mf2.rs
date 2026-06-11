@@ -1,7 +1,7 @@
 include!(concat!(env!("OUT_DIR"), "/timeline_date_i18n_runtime.rs"));
 
 use crate::{
-    TimelineDateBucket, TimelineDateError, TimelineDateFormatter, TimelineDateResult,
+    HourCycle, TimelineDateBucket, TimelineDateError, TimelineDateFormatter, TimelineDateResult,
     TimelineDateStyle,
 };
 
@@ -11,16 +11,28 @@ pub(crate) fn format_millis(
     style: TimelineDateStyle,
     bucket: TimelineDateBucket,
 ) -> TimelineDateResult<String> {
-    let key = message_key(style, bucket)?;
-    let args = message_args(event_unix_ms, style, bucket, &formatter.options().timezone);
-    let backend = mf2_i18n::embedded::BasicFormatBackend;
-    format_key_with_backend(
-        embedded_runtime()?,
+    format_selected(
         formatter.selected_locale(),
-        key,
-        &args,
-        &backend,
+        &formatter.options().timezone,
+        formatter.options().hour_cycle,
+        event_unix_ms,
+        style,
+        bucket,
     )
+}
+
+fn format_selected(
+    selected_locale: &str,
+    timezone: &str,
+    hour_cycle: HourCycle,
+    event_unix_ms: i64,
+    style: TimelineDateStyle,
+    bucket: TimelineDateBucket,
+) -> TimelineDateResult<String> {
+    let key = message_key(style, bucket)?;
+    let args = message_args(event_unix_ms, style, bucket, timezone);
+    let backend = crate::backend::TimelineDateBackend::new(selected_locale, timezone, hour_cycle)?;
+    format_key_with_backend(embedded_runtime()?, selected_locale, key, &args, &backend)
 }
 
 pub(crate) fn embedded_runtime() -> TimelineDateResult<&'static mf2_i18n::EmbeddedRuntime> {
@@ -108,10 +120,10 @@ fn format_key_with_backend(
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_LOCALE, SUPPORTED_LOCALES, embedded_runtime, format_key_with_backend, message_args,
-        message_key,
+        DEFAULT_LOCALE, SUPPORTED_LOCALES, embedded_runtime, format_key_with_backend,
+        format_selected, message_args, message_key,
     };
-    use crate::{TimelineDateBucket, TimelineDateError, TimelineDateStyle};
+    use crate::{HourCycle, TimelineDateBucket, TimelineDateError, TimelineDateStyle};
 
     const MESSAGE_KEYS: [&str; 10] = [
         "timeline_date.just_now",
@@ -318,6 +330,24 @@ mod tests {
                 "unsupported: time formatting requires a format backend".to_owned()
             )
         );
+    }
+
+    #[test]
+    fn backend_creation_failures_are_typed() {
+        let error = format_selected(
+            "not locale",
+            "UTC",
+            HourCycle::LocaleDefault,
+            42,
+            TimelineDateStyle::Feed,
+            TimelineDateBucket::MinutesAgo { minutes: 1 },
+        )
+        .expect_err("backend");
+        assert!(matches!(
+            error,
+            TimelineDateError::InvalidLocale(message)
+                if message.contains("invalid locale tag")
+        ));
     }
 
     fn has_datetime_arg(args: &mf2_i18n::Args, name: &str, expected: i64) -> bool {

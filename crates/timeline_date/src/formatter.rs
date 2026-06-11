@@ -170,17 +170,27 @@ mod tests {
 
     #[test]
     #[cfg(all(feature = "jiff", feature = "mf2"))]
-    fn format_millis_maps_detail_and_audit_styles() {
+    fn format_millis_maps_detail_and_audit_styles_to_backend_errors() {
         let formatter =
             TimelineDateFormatter::new(TimelineDateOptions::new(0, "UTC")).expect("formatter");
         let detail = formatter
             .format_millis(0, crate::TimelineDateStyle::Detail)
-            .expect("detail");
+            .expect_err("detail");
         let audit = formatter
             .format_millis(0, crate::TimelineDateStyle::Audit)
-            .expect("audit");
-        assert_eq!(detail, "unix-milliseconds:0 at unix-milliseconds:0");
-        assert_eq!(audit, "unix-milliseconds:0 UTC");
+            .expect_err("audit");
+        assert_eq!(
+            detail,
+            TimelineDateError::I18nFormat(
+                "unsupported: timezone-aware datetime formatting is not implemented".to_owned()
+            )
+        );
+        assert_eq!(
+            audit,
+            TimelineDateError::I18nFormat(
+                "unsupported: timezone-aware datetime formatting is not implemented".to_owned()
+            )
+        );
     }
 
     #[test]

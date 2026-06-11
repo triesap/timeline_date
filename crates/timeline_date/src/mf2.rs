@@ -1,14 +1,117 @@
 include!(concat!(env!("OUT_DIR"), "/timeline_date_i18n_runtime.rs"));
 
-use crate::{TimelineDateError, TimelineDateResult};
+use crate::{
+    TimelineDateBucket, TimelineDateError, TimelineDateFormatter, TimelineDateResult,
+    TimelineDateStyle,
+};
+
+pub(crate) fn format_millis(
+    formatter: &TimelineDateFormatter,
+    event_unix_ms: i64,
+    style: TimelineDateStyle,
+    bucket: TimelineDateBucket,
+) -> TimelineDateResult<String> {
+    let key = message_key(style, bucket)?;
+    let args = message_args(event_unix_ms, style, bucket, &formatter.options().timezone);
+    let backend = mf2_i18n::embedded::BasicFormatBackend;
+    format_key_with_backend(
+        embedded_runtime()?,
+        formatter.selected_locale(),
+        key,
+        &args,
+        &backend,
+    )
+}
 
 pub(crate) fn embedded_runtime() -> TimelineDateResult<&'static mf2_i18n::EmbeddedRuntime> {
     runtime().map_err(TimelineDateError::I18nInit)
 }
 
+fn message_key(
+    style: TimelineDateStyle,
+    bucket: TimelineDateBucket,
+) -> TimelineDateResult<&'static str> {
+    match style {
+        TimelineDateStyle::Detail => Ok("timeline_date.detail_datetime"),
+        TimelineDateStyle::Audit => Ok("timeline_date.audit_datetime"),
+        TimelineDateStyle::Feed => match bucket {
+            TimelineDateBucket::JustNow => Ok("timeline_date.just_now"),
+            TimelineDateBucket::MinutesAgo { .. } => Ok("timeline_date.minutes_ago"),
+            TimelineDateBucket::Today => Ok("timeline_date.today_at_time"),
+            TimelineDateBucket::Yesterday => Ok("timeline_date.yesterday_at_time"),
+            TimelineDateBucket::Weekday => Ok("timeline_date.weekday_at_time"),
+            TimelineDateBucket::SameYear => Ok("timeline_date.same_year_at_time"),
+            TimelineDateBucket::Older => Ok("timeline_date.older_date"),
+            TimelineDateBucket::Future => Ok("timeline_date.future_at_datetime"),
+            TimelineDateBucket::Detail | TimelineDateBucket::Audit => Err(
+                TimelineDateError::Internal(format!("invalid feed bucket: {bucket:?}")),
+            ),
+        },
+    }
+}
+
+fn message_args(
+    event_unix_ms: i64,
+    style: TimelineDateStyle,
+    bucket: TimelineDateBucket,
+    timezone: &str,
+) -> mf2_i18n::Args {
+    let mut args = mf2_i18n::Args::new();
+
+    if message_uses_event(style, bucket) {
+        args.insert(
+            "event",
+            mf2_i18n::Value::DateTime(mf2_i18n::DateTimeValue::unix_milliseconds(event_unix_ms)),
+        );
+    }
+
+    if matches!(style, TimelineDateStyle::Feed)
+        && let TimelineDateBucket::MinutesAgo { minutes } = bucket
+    {
+        args.insert("minutes", mf2_i18n::Value::Num(f64::from(minutes)));
+    }
+
+    if matches!(style, TimelineDateStyle::Audit) {
+        args.insert("timezone", mf2_i18n::Value::Str(timezone.to_owned()));
+    }
+
+    args
+}
+
+fn message_uses_event(style: TimelineDateStyle, bucket: TimelineDateBucket) -> bool {
+    match style {
+        TimelineDateStyle::Detail | TimelineDateStyle::Audit => true,
+        TimelineDateStyle::Feed => matches!(
+            bucket,
+            TimelineDateBucket::Today
+                | TimelineDateBucket::Yesterday
+                | TimelineDateBucket::Weekday
+                | TimelineDateBucket::SameYear
+                | TimelineDateBucket::Older
+                | TimelineDateBucket::Future
+        ),
+    }
+}
+
+fn format_key_with_backend(
+    runtime: &mf2_i18n::EmbeddedRuntime,
+    locale: &str,
+    key: &str,
+    args: &mf2_i18n::Args,
+    backend: &dyn mf2_i18n::FormatBackend,
+) -> TimelineDateResult<String> {
+    runtime
+        .format_with_backend(locale, key, args, backend)
+        .map_err(|error| TimelineDateError::I18nFormat(error.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULT_LOCALE, SUPPORTED_LOCALES, embedded_runtime};
+    use super::{
+        DEFAULT_LOCALE, SUPPORTED_LOCALES, embedded_runtime, format_key_with_backend, message_args,
+        message_key,
+    };
+    use crate::{TimelineDateBucket, TimelineDateError, TimelineDateStyle};
 
     const MESSAGE_KEYS: [&str; 10] = [
         "timeline_date.just_now",
@@ -49,5 +152,187 @@ mod tests {
                 assert!(!value.is_empty());
             }
         }
+    }
+
+    #[test]
+    fn message_key_maps_every_feed_bucket() {
+        let cases = [
+            (TimelineDateBucket::JustNow, "timeline_date.just_now"),
+            (
+                TimelineDateBucket::MinutesAgo { minutes: 1 },
+                "timeline_date.minutes_ago",
+            ),
+            (TimelineDateBucket::Today, "timeline_date.today_at_time"),
+            (
+                TimelineDateBucket::Yesterday,
+                "timeline_date.yesterday_at_time",
+            ),
+            (TimelineDateBucket::Weekday, "timeline_date.weekday_at_time"),
+            (
+                TimelineDateBucket::SameYear,
+                "timeline_date.same_year_at_time",
+            ),
+            (TimelineDateBucket::Older, "timeline_date.older_date"),
+            (
+                TimelineDateBucket::Future,
+                "timeline_date.future_at_datetime",
+            ),
+        ];
+
+        for (bucket, key) in cases {
+            assert_eq!(message_key(TimelineDateStyle::Feed, bucket), Ok(key));
+        }
+    }
+
+    #[test]
+    fn message_key_maps_fixed_styles_without_feed_bucket_dependence() {
+        assert_eq!(
+            message_key(TimelineDateStyle::Detail, TimelineDateBucket::JustNow),
+            Ok("timeline_date.detail_datetime")
+        );
+        assert_eq!(
+            message_key(
+                TimelineDateStyle::Detail,
+                TimelineDateBucket::MinutesAgo { minutes: 3 }
+            ),
+            Ok("timeline_date.detail_datetime")
+        );
+        assert_eq!(
+            message_key(TimelineDateStyle::Audit, TimelineDateBucket::Older),
+            Ok("timeline_date.audit_datetime")
+        );
+    }
+
+    #[test]
+    fn message_key_rejects_invalid_feed_buckets() {
+        assert_eq!(
+            message_key(TimelineDateStyle::Feed, TimelineDateBucket::Detail),
+            Err(TimelineDateError::Internal(
+                "invalid feed bucket: Detail".to_owned()
+            ))
+        );
+        assert_eq!(
+            message_key(TimelineDateStyle::Feed, TimelineDateBucket::Audit),
+            Err(TimelineDateError::Internal(
+                "invalid feed bucket: Audit".to_owned()
+            ))
+        );
+    }
+
+    #[test]
+    fn message_args_include_only_needed_values() {
+        let just_now = message_args(
+            42,
+            TimelineDateStyle::Feed,
+            TimelineDateBucket::JustNow,
+            "UTC",
+        );
+        assert!(just_now.get("event").is_none());
+        assert!(just_now.get("minutes").is_none());
+        assert!(just_now.get("timezone").is_none());
+
+        let minutes = message_args(
+            42,
+            TimelineDateStyle::Feed,
+            TimelineDateBucket::MinutesAgo { minutes: 8 },
+            "UTC",
+        );
+        assert!(minutes.get("event").is_none());
+        assert!(has_number_arg(&minutes, "minutes", 8.0));
+        assert!(minutes.get("timezone").is_none());
+
+        for bucket in [
+            TimelineDateBucket::Today,
+            TimelineDateBucket::Yesterday,
+            TimelineDateBucket::Weekday,
+            TimelineDateBucket::SameYear,
+            TimelineDateBucket::Older,
+            TimelineDateBucket::Future,
+        ] {
+            let args = message_args(42, TimelineDateStyle::Feed, bucket, "UTC");
+            assert!(has_datetime_arg(&args, "event", 42));
+            assert!(args.get("minutes").is_none());
+            assert!(args.get("timezone").is_none());
+        }
+
+        let detail = message_args(
+            42,
+            TimelineDateStyle::Detail,
+            TimelineDateBucket::Detail,
+            "UTC",
+        );
+        assert!(has_datetime_arg(&detail, "event", 42));
+        assert!(detail.get("minutes").is_none());
+        assert!(detail.get("timezone").is_none());
+
+        let audit = message_args(
+            42,
+            TimelineDateStyle::Audit,
+            TimelineDateBucket::Audit,
+            "America/Vancouver",
+        );
+        assert!(has_datetime_arg(&audit, "event", 42));
+        assert!(audit.get("minutes").is_none());
+        assert!(has_string_arg(&audit, "timezone", "America/Vancouver"));
+    }
+
+    #[test]
+    fn missing_message_key_maps_to_format_error() {
+        let runtime = embedded_runtime().expect("runtime");
+        let backend = mf2_i18n::embedded::BasicFormatBackend;
+        let error = format_key_with_backend(
+            runtime,
+            "en",
+            "timeline_date.missing",
+            &mf2_i18n::Args::new(),
+            &backend,
+        )
+        .expect_err("missing key");
+        assert_eq!(
+            error,
+            TimelineDateError::I18nFormat("invalid input: missing message".to_owned())
+        );
+    }
+
+    #[test]
+    fn runtime_backend_failures_map_to_format_error() {
+        let runtime = embedded_runtime().expect("runtime");
+        let backend = mf2_i18n::embedded::UnsupportedFormatBackend;
+        let args = message_args(
+            42,
+            TimelineDateStyle::Feed,
+            TimelineDateBucket::Today,
+            "UTC",
+        );
+        let error = format_key_with_backend(
+            runtime,
+            "en",
+            "timeline_date.today_at_time",
+            &args,
+            &backend,
+        )
+        .expect_err("backend failure");
+        assert_eq!(
+            error,
+            TimelineDateError::I18nFormat(
+                "unsupported: time formatting requires a format backend".to_owned()
+            )
+        );
+    }
+
+    fn has_datetime_arg(args: &mf2_i18n::Args, name: &str, expected: i64) -> bool {
+        matches!(
+            args.get(name),
+            Some(mf2_i18n::Value::DateTime(value))
+                if *value == mf2_i18n::DateTimeValue::unix_milliseconds(expected)
+        )
+    }
+
+    fn has_number_arg(args: &mf2_i18n::Args, name: &str, expected: f64) -> bool {
+        matches!(args.get(name), Some(mf2_i18n::Value::Num(value)) if *value == expected)
+    }
+
+    fn has_string_arg(args: &mf2_i18n::Args, name: &str, expected: &str) -> bool {
+        matches!(args.get(name), Some(mf2_i18n::Value::Str(value)) if value == expected)
     }
 }

@@ -59,6 +59,25 @@ impl TimelineDateFormatter {
             }
         }
     }
+
+    pub fn format_millis(
+        &self,
+        event_unix_ms: i64,
+        style: TimelineDateStyle,
+    ) -> TimelineDateResult<String> {
+        let bucket = self.classify_millis(event_unix_ms, style)?;
+        #[cfg(feature = "mf2")]
+        {
+            crate::mf2::format_millis(self, event_unix_ms, style, bucket)
+        }
+        #[cfg(not(feature = "mf2"))]
+        {
+            let _ = (event_unix_ms, style, bucket);
+            Err(crate::TimelineDateError::FormattingUnsupported(
+                "formatting requires the mf2 feature".to_owned(),
+            ))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -133,6 +152,45 @@ mod tests {
     fn new_rejects_invalid_now_timestamp() {
         let options = TimelineDateOptions::new(i64::MAX, "UTC");
         let error = TimelineDateFormatter::new(options).expect_err("invalid timestamp");
+        assert_eq!(error, TimelineDateError::InvalidTimestamp(i64::MAX));
+    }
+
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "mf2"))]
+    fn format_millis_uses_selected_locale_catalog() {
+        let formatter = TimelineDateFormatter::new(
+            TimelineDateOptions::new(600_000, "UTC").with_locale_preferences(["es-MX"]),
+        )
+        .expect("formatter");
+        let label = formatter
+            .format_millis(120_000, crate::TimelineDateStyle::Feed)
+            .expect("label");
+        assert_eq!(label, "hace 8 min");
+    }
+
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "mf2"))]
+    fn format_millis_maps_detail_and_audit_styles() {
+        let formatter =
+            TimelineDateFormatter::new(TimelineDateOptions::new(0, "UTC")).expect("formatter");
+        let detail = formatter
+            .format_millis(0, crate::TimelineDateStyle::Detail)
+            .expect("detail");
+        let audit = formatter
+            .format_millis(0, crate::TimelineDateStyle::Audit)
+            .expect("audit");
+        assert_eq!(detail, "unix-milliseconds:0 at unix-milliseconds:0");
+        assert_eq!(audit, "unix-milliseconds:0 UTC");
+    }
+
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "mf2"))]
+    fn format_millis_returns_classification_errors() {
+        let formatter =
+            TimelineDateFormatter::new(TimelineDateOptions::new(0, "UTC")).expect("formatter");
+        let error = formatter
+            .format_millis(i64::MAX, crate::TimelineDateStyle::Feed)
+            .expect_err("invalid event");
         assert_eq!(error, TimelineDateError::InvalidTimestamp(i64::MAX));
     }
 }

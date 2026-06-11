@@ -25,7 +25,7 @@ icu_datetime = "2.2.0"
 icu_locale = "2.2.0"
 insta = "1.43"
 jiff = { version = "0.2.28", default-features = true }
-mf2_i18n = { git = "ssh://git@github.com/triesap/mf2_i18n.git", rev = "e2ad58d5863d9dd98f2f38d1f08b2140bf34b0a1", default-features = false, features = ["embedded", "runtime", "std_backend"] }
+mf2_i18n = { git = "https://github.com/triesap/mf2_i18n.git", rev = "e2ad58d5863d9dd98f2f38d1f08b2140bf34b0a1", default-features = false, features = ["embedded", "runtime", "std_backend"] }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
 uniffi = "0.31.1"

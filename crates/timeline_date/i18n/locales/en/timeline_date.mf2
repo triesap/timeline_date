@@ -15,6 +15,8 @@ same_year_at_time = { $event:datetime month=short day=numeric } at { $event:time
 
 older_date = { $event:date style=medium }
 
+older_date_time = { $event:datetime dateStyle=medium timeStyle=short }
+
 future_at_datetime = { $event:datetime dateStyle=medium timeStyle=short }
 
 detail_datetime = { $event:datetime weekday=long month=long day=numeric year=numeric } at { $event:time style=short }

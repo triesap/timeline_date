@@ -1,8 +1,8 @@
 include!(concat!(env!("OUT_DIR"), "/timeline_date_i18n_runtime.rs"));
 
 use crate::{
-    HourCycle, TimelineDateBucket, TimelineDateError, TimelineDateFormatter, TimelineDateResult,
-    TimelineDateStyle,
+    HourCycle, OldDateTimePolicy, TimelineDateBucket, TimelineDateError, TimelineDateFormatter,
+    TimelineDateResult, TimelineDateStyle,
 };
 
 pub(crate) fn format_millis(
@@ -15,6 +15,7 @@ pub(crate) fn format_millis(
         formatter.selected_locale(),
         &formatter.options().timezone,
         formatter.options().hour_cycle,
+        formatter.options().old_date_time_policy,
         event_unix_ms,
         style,
         bucket,
@@ -25,11 +26,12 @@ fn format_selected(
     selected_locale: &str,
     timezone: &str,
     hour_cycle: HourCycle,
+    old_date_time_policy: OldDateTimePolicy,
     event_unix_ms: i64,
     style: TimelineDateStyle,
     bucket: TimelineDateBucket,
 ) -> TimelineDateResult<String> {
-    let key = message_key(style, bucket)?;
+    let key = message_key(style, bucket, old_date_time_policy)?;
     let args = message_args(event_unix_ms, style, bucket, timezone)?;
     let backend = crate::backend::TimelineDateBackend::new(selected_locale, timezone, hour_cycle)?;
     format_key_with_backend(embedded_runtime()?, selected_locale, key, &args, &backend)
@@ -42,6 +44,7 @@ pub(crate) fn embedded_runtime() -> TimelineDateResult<&'static mf2_i18n::Embedd
 fn message_key(
     style: TimelineDateStyle,
     bucket: TimelineDateBucket,
+    old_date_time_policy: OldDateTimePolicy,
 ) -> TimelineDateResult<&'static str> {
     match style {
         TimelineDateStyle::Detail => Ok("timeline_date.detail_datetime"),
@@ -53,7 +56,10 @@ fn message_key(
             TimelineDateBucket::Yesterday => Ok("timeline_date.yesterday_at_time"),
             TimelineDateBucket::Weekday => Ok("timeline_date.weekday_at_time"),
             TimelineDateBucket::SameYear => Ok("timeline_date.same_year_at_time"),
-            TimelineDateBucket::Older => Ok("timeline_date.older_date"),
+            TimelineDateBucket::Older => match old_date_time_policy {
+                OldDateTimePolicy::DateOnly => Ok("timeline_date.older_date"),
+                OldDateTimePolicy::DateTime => Ok("timeline_date.older_date_time"),
+            },
             TimelineDateBucket::Future => Ok("timeline_date.future_at_datetime"),
             TimelineDateBucket::Detail | TimelineDateBucket::Audit => Err(
                 TimelineDateError::Internal(format!("invalid feed bucket: {bucket:?}")),
@@ -153,11 +159,11 @@ mod tests {
         format_selected, message_args, message_key,
     };
     use crate::{
-        HourCycle, TimelineDateBucket, TimelineDateError, TimelineDateFormatter,
+        HourCycle, OldDateTimePolicy, TimelineDateBucket, TimelineDateError, TimelineDateFormatter,
         TimelineDateOptions, TimelineDateStyle,
     };
 
-    const MESSAGE_KEYS: [&str; 10] = [
+    const MESSAGE_KEYS: [&str; 11] = [
         "timeline_date.just_now",
         "timeline_date.minutes_ago",
         "timeline_date.today_at_time",
@@ -165,6 +171,7 @@ mod tests {
         "timeline_date.weekday_at_time",
         "timeline_date.same_year_at_time",
         "timeline_date.older_date",
+        "timeline_date.older_date_time",
         "timeline_date.future_at_datetime",
         "timeline_date.detail_datetime",
         "timeline_date.audit_datetime",
@@ -234,25 +241,45 @@ mod tests {
         ];
 
         for (bucket, key) in cases {
-            assert_eq!(message_key(TimelineDateStyle::Feed, bucket), Ok(key));
+            assert_eq!(
+                message_key(TimelineDateStyle::Feed, bucket, OldDateTimePolicy::DateOnly),
+                Ok(key)
+            );
         }
+        assert_eq!(
+            message_key(
+                TimelineDateStyle::Feed,
+                TimelineDateBucket::Older,
+                OldDateTimePolicy::DateTime
+            ),
+            Ok("timeline_date.older_date_time")
+        );
     }
 
     #[test]
     fn message_key_maps_fixed_styles_without_feed_bucket_dependence() {
         assert_eq!(
-            message_key(TimelineDateStyle::Detail, TimelineDateBucket::JustNow),
+            message_key(
+                TimelineDateStyle::Detail,
+                TimelineDateBucket::JustNow,
+                OldDateTimePolicy::DateTime
+            ),
             Ok("timeline_date.detail_datetime")
         );
         assert_eq!(
             message_key(
                 TimelineDateStyle::Detail,
-                TimelineDateBucket::MinutesAgo { minutes: 3 }
+                TimelineDateBucket::MinutesAgo { minutes: 3 },
+                OldDateTimePolicy::DateOnly
             ),
             Ok("timeline_date.detail_datetime")
         );
         assert_eq!(
-            message_key(TimelineDateStyle::Audit, TimelineDateBucket::Older),
+            message_key(
+                TimelineDateStyle::Audit,
+                TimelineDateBucket::Older,
+                OldDateTimePolicy::DateTime
+            ),
             Ok("timeline_date.audit_datetime")
         );
     }
@@ -260,13 +287,21 @@ mod tests {
     #[test]
     fn message_key_rejects_invalid_feed_buckets() {
         assert_eq!(
-            message_key(TimelineDateStyle::Feed, TimelineDateBucket::Detail),
+            message_key(
+                TimelineDateStyle::Feed,
+                TimelineDateBucket::Detail,
+                OldDateTimePolicy::DateOnly
+            ),
             Err(TimelineDateError::Internal(
                 "invalid feed bucket: Detail".to_owned()
             ))
         );
         assert_eq!(
-            message_key(TimelineDateStyle::Feed, TimelineDateBucket::Audit),
+            message_key(
+                TimelineDateStyle::Feed,
+                TimelineDateBucket::Audit,
+                OldDateTimePolicy::DateTime
+            ),
             Err(TimelineDateError::Internal(
                 "invalid feed bucket: Audit".to_owned()
             ))
@@ -459,6 +494,7 @@ mod tests {
             "not locale",
             "UTC",
             HourCycle::LocaleDefault,
+            OldDateTimePolicy::DateOnly,
             42,
             TimelineDateStyle::Feed,
             TimelineDateBucket::MinutesAgo { minutes: 1 },

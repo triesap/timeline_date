@@ -20,6 +20,13 @@ pub struct FuturePolicy {
     pub skew_seconds: i64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum OldDateTimePolicy {
+    DateOnly,
+    DateTime,
+}
+
 impl Default for FuturePolicy {
     fn default() -> Self {
         Self { skew_seconds: 30 }
@@ -34,6 +41,7 @@ pub struct TimelineDateOptions {
     pub locale_preferences: Vec<String>,
     pub hour_cycle: HourCycle,
     pub future_policy: FuturePolicy,
+    pub old_date_time_policy: OldDateTimePolicy,
 }
 
 impl TimelineDateOptions {
@@ -44,6 +52,7 @@ impl TimelineDateOptions {
             locale_preferences: vec!["en".to_owned()],
             hour_cycle: HourCycle::LocaleDefault,
             future_policy: FuturePolicy::default(),
+            old_date_time_policy: OldDateTimePolicy::DateOnly,
         }
     }
 
@@ -73,11 +82,18 @@ impl TimelineDateOptions {
         self.future_policy = policy;
         self
     }
+
+    pub fn with_old_date_time_policy(mut self, policy: OldDateTimePolicy) -> Self {
+        self.old_date_time_policy = policy;
+        self
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{FuturePolicy, HourCycle, TimelineDateOptions, TimelineDateStyle};
+    use super::{
+        FuturePolicy, HourCycle, OldDateTimePolicy, TimelineDateOptions, TimelineDateStyle,
+    };
 
     #[test]
     fn new_sets_default_options() {
@@ -87,6 +103,7 @@ mod tests {
         assert_eq!(options.locale_preferences, ["en"]);
         assert_eq!(options.hour_cycle, HourCycle::LocaleDefault);
         assert_eq!(options.future_policy, FuturePolicy { skew_seconds: 30 });
+        assert_eq!(options.old_date_time_policy, OldDateTimePolicy::DateOnly);
     }
 
     #[test]
@@ -117,6 +134,16 @@ mod tests {
         let policy = FuturePolicy { skew_seconds: 45 };
         let options = TimelineDateOptions::new(0, "UTC").with_future_policy(policy);
         assert_eq!(options.future_policy, policy);
+    }
+
+    #[test]
+    fn old_date_time_policy_builder_sets_every_variant() {
+        let date_only = TimelineDateOptions::new(0, "UTC")
+            .with_old_date_time_policy(OldDateTimePolicy::DateOnly);
+        let date_time = TimelineDateOptions::new(0, "UTC")
+            .with_old_date_time_policy(OldDateTimePolicy::DateTime);
+        assert_eq!(date_only.old_date_time_policy, OldDateTimePolicy::DateOnly);
+        assert_eq!(date_time.old_date_time_policy, OldDateTimePolicy::DateTime);
     }
 
     #[test]

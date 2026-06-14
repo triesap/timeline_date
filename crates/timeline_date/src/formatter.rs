@@ -83,7 +83,7 @@ impl TimelineDateFormatter {
 #[cfg(test)]
 mod tests {
     use super::TimelineDateFormatter;
-    use crate::{HourCycle, TimelineDateError, TimelineDateOptions};
+    use crate::{HourCycle, OldDateTimePolicy, TimelineDateError, TimelineDateOptions};
 
     #[test]
     #[cfg(all(feature = "jiff", feature = "mf2"))]
@@ -403,10 +403,53 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(feature = "jiff", feature = "mf2", feature = "icu"))]
+    fn old_date_time_policy_formats_older_feed_bucket_in_every_locale() {
+        let cases = [
+            ("en", "Dec 31, 2025", "Dec 31, 2025, 12:00"),
+            ("es", "31 dic 2025", "31 dic 2025, 12:00"),
+            ("fr", "31 d\u{e9}c. 2025", "31 d\u{e9}c. 2025, 12:00"),
+        ];
+
+        for (locale, date_only, date_time) in cases {
+            let default_formatter = TimelineDateFormatter::new(
+                TimelineDateOptions::new(ms("2026-06-08T19:00:00Z"), "America/Vancouver")
+                    .with_locale_preferences([locale])
+                    .with_hour_cycle(HourCycle::H24),
+            )
+            .expect("default formatter");
+            let date_time_formatter = TimelineDateFormatter::new(
+                TimelineDateOptions::new(ms("2026-06-08T19:00:00Z"), "America/Vancouver")
+                    .with_locale_preferences([locale])
+                    .with_hour_cycle(HourCycle::H24)
+                    .with_old_date_time_policy(OldDateTimePolicy::DateTime),
+            )
+            .expect("date time formatter");
+            let event = ms("2025-12-31T20:00:00Z");
+
+            assert_eq!(
+                default_formatter
+                    .format_millis(event, crate::TimelineDateStyle::Feed)
+                    .expect("date-only older"),
+                date_only
+            );
+            assert_eq!(
+                date_time_formatter
+                    .format_millis(event, crate::TimelineDateStyle::Feed)
+                    .expect("date-time older"),
+                date_time
+            );
+        }
+    }
+
+    #[test]
     #[cfg(all(feature = "jiff", feature = "mf2"))]
     fn format_millis_returns_classification_errors() {
-        let formatter =
-            TimelineDateFormatter::new(TimelineDateOptions::new(0, "UTC")).expect("formatter");
+        let formatter = TimelineDateFormatter::new(
+            TimelineDateOptions::new(0, "UTC")
+                .with_old_date_time_policy(OldDateTimePolicy::DateTime),
+        )
+        .expect("formatter");
         let error = formatter
             .format_millis(i64::MAX, crate::TimelineDateStyle::Feed)
             .expect_err("invalid event");
@@ -449,6 +492,20 @@ mod tests {
         );
     }
 
+    #[test]
+    #[cfg(all(feature = "jiff", feature = "mf2", not(feature = "icu")))]
+    fn reduced_mode_old_date_time_policy_is_typed() {
+        let formatter = TimelineDateFormatter::new(
+            TimelineDateOptions::new(ms("2026-06-08T19:00:00Z"), "America/Vancouver")
+                .with_old_date_time_policy(OldDateTimePolicy::DateTime),
+        )
+        .expect("formatter");
+        let error = formatter
+            .format_millis(ms("2025-12-31T20:00:00Z"), crate::TimelineDateStyle::Feed)
+            .expect_err("older date time");
+        assert_eq!(error, expected_datetime_format_error());
+    }
+
     #[cfg(all(feature = "jiff", feature = "mf2", not(feature = "icu")))]
     fn expected_datetime_format_error() -> TimelineDateError {
         TimelineDateError::I18nFormat(format!(
@@ -457,7 +514,7 @@ mod tests {
         ))
     }
 
-    #[cfg(all(feature = "jiff", feature = "mf2", feature = "icu"))]
+    #[cfg(feature = "jiff")]
     fn ms(value: &str) -> i64 {
         value
             .parse::<jiff::Timestamp>()

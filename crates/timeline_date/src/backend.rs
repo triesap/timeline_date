@@ -1,5 +1,7 @@
 use crate::{HourCycle, TimelineDateError, TimelineDateResult};
 
+pub(crate) const ICU_DATETIME_DATA_UNAVAILABLE: &str = "icu datetime formatter data unavailable";
+
 pub(crate) struct TimelineDateBackend {
     locale: String,
     hour_cycle: HourCycle,
@@ -117,7 +119,7 @@ impl TimelineDateBackend {
             self.icu_preferences()?,
             icu_datetime::fieldsets::T::hm(),
         )
-        .expect("compiled ICU datetime formatter data should load");
+        .map_err(|_| mf2_i18n::CoreError::Internal(ICU_DATETIME_DATA_UNAVAILABLE))?;
         Ok(formatter.format(&icu_time(local)?).to_string())
     }
 
@@ -127,7 +129,7 @@ impl TimelineDateBackend {
             self.icu_preferences()?,
             icu_datetime::fieldsets::YMD::medium(),
         )
-        .expect("compiled ICU datetime formatter data should load");
+        .map_err(|_| mf2_i18n::CoreError::Internal(ICU_DATETIME_DATA_UNAVAILABLE))?;
         Ok(formatter.format(&icu_date(local)?).to_string())
     }
 
@@ -137,7 +139,7 @@ impl TimelineDateBackend {
             self.icu_preferences()?,
             icu_datetime::fieldsets::E::long(),
         )
-        .expect("compiled ICU datetime formatter data should load");
+        .map_err(|_| mf2_i18n::CoreError::Internal(ICU_DATETIME_DATA_UNAVAILABLE))?;
         Ok(formatter.format(&icu_date(local)?).to_string())
     }
 
@@ -150,7 +152,7 @@ impl TimelineDateBackend {
             self.icu_preferences()?,
             icu_datetime::fieldsets::MD::medium(),
         )
-        .expect("compiled ICU datetime formatter data should load");
+        .map_err(|_| mf2_i18n::CoreError::Internal(ICU_DATETIME_DATA_UNAVAILABLE))?;
         Ok(formatter.format(&icu_date(local)?).to_string())
     }
 
@@ -163,7 +165,7 @@ impl TimelineDateBackend {
             self.icu_preferences()?,
             icu_datetime::fieldsets::YMDE::long(),
         )
-        .expect("compiled ICU datetime formatter data should load");
+        .map_err(|_| mf2_i18n::CoreError::Internal(ICU_DATETIME_DATA_UNAVAILABLE))?;
         Ok(formatter.format(&icu_date(local)?).to_string())
     }
 
@@ -176,7 +178,7 @@ impl TimelineDateBackend {
             self.icu_preferences()?,
             icu_datetime::fieldsets::YMD::medium().with_time_hm(),
         )
-        .expect("compiled ICU datetime formatter data should load");
+        .map_err(|_| mf2_i18n::CoreError::Internal(ICU_DATETIME_DATA_UNAVAILABLE))?;
         Ok(formatter.format(&icu_datetime(local)?).to_string())
     }
 

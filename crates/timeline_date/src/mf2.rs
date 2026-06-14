@@ -146,14 +146,25 @@ fn format_key_with_backend(
 ) -> TimelineDateResult<String> {
     runtime
         .format_with_backend(locale, key, args, backend)
-        .map_err(|error| TimelineDateError::I18nFormat(error.to_string()))
+        .map_err(|error| map_format_error(locale, error))
+}
+
+fn map_format_error(locale: &str, error: mf2_i18n::CoreError) -> TimelineDateError {
+    match error {
+        mf2_i18n::CoreError::Internal(message)
+            if message == crate::backend::ICU_DATETIME_DATA_UNAVAILABLE =>
+        {
+            TimelineDateError::LocaleDataUnavailable(locale.to_owned())
+        }
+        error => TimelineDateError::I18nFormat(error.to_string()),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         DEFAULT_LOCALE, SUPPORTED_LOCALES, embedded_runtime, format_key_with_backend,
-        format_selected, message_args, message_key,
+        format_selected, map_format_error, message_args, message_key,
     };
     use crate::{
         HourCycle, OldDateTimePolicy, TimelineDateBucket, TimelineDateError, TimelineDateFormatter,
@@ -421,6 +432,25 @@ mod tests {
             TimelineDateError::I18nFormat(
                 "unsupported: time formatting requires a format backend".to_owned()
             )
+        );
+    }
+
+    #[test]
+    fn icu_data_failures_map_to_locale_data_unavailable() {
+        assert_eq!(
+            map_format_error(
+                "fr",
+                mf2_i18n::CoreError::Internal(crate::backend::ICU_DATETIME_DATA_UNAVAILABLE),
+            ),
+            TimelineDateError::LocaleDataUnavailable("fr".to_owned())
+        );
+    }
+
+    #[test]
+    fn non_icu_internal_format_errors_remain_i18n_format_errors() {
+        assert_eq!(
+            map_format_error("fr", mf2_i18n::CoreError::Internal("other backend failure")),
+            TimelineDateError::I18nFormat("internal error: other backend failure".to_owned())
         );
     }
 

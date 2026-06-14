@@ -326,7 +326,7 @@ mod tests {
                 "fr",
                 "2026-06-08T18:59:50Z",
                 crate::TimelineDateStyle::Feed,
-                "A l'instant",
+                "À l’instant",
             ),
             (
                 "fr",
@@ -338,31 +338,31 @@ mod tests {
                 "fr",
                 "2026-06-08T17:00:00Z",
                 crate::TimelineDateStyle::Feed,
-                "Aujourd'hui a 10:00",
+                "Aujourd’hui à 10:00",
             ),
             (
                 "fr",
                 "2026-06-08T06:30:00Z",
                 crate::TimelineDateStyle::Feed,
-                "Hier a 23:30",
+                "Hier à 23:30",
             ),
             (
                 "fr",
                 "2026-06-02T19:00:00Z",
                 crate::TimelineDateStyle::Feed,
-                "mardi a 12:00",
+                "mardi à 12:00",
             ),
             (
                 "fr",
                 "2026-06-01T19:00:00Z",
                 crate::TimelineDateStyle::Feed,
-                "1 juin a 12:00",
+                "1 juin à 12:00",
             ),
             (
                 "fr",
                 "2025-12-31T20:00:00Z",
                 crate::TimelineDateStyle::Feed,
-                "31 d\u{e9}c. 2025",
+                "31 déc. 2025",
             ),
             (
                 "fr",
@@ -374,7 +374,7 @@ mod tests {
                 "fr",
                 "2026-06-08T19:00:00Z",
                 crate::TimelineDateStyle::Detail,
-                "lundi 8 juin 2026 a 12:00",
+                "lundi 8 juin 2026 à 12:00",
             ),
             (
                 "fr",
@@ -404,7 +404,7 @@ mod tests {
         let cases = [
             ("en", "Dec 31, 2025", "Dec 31, 2025, 12:00"),
             ("es", "31 dic 2025", "31 dic 2025, 12:00"),
-            ("fr", "31 d\u{e9}c. 2025", "31 d\u{e9}c. 2025, 12:00"),
+            ("fr", "31 déc. 2025", "31 déc. 2025, 12:00"),
         ];
 
         for (locale, date_only, date_time) in cases {

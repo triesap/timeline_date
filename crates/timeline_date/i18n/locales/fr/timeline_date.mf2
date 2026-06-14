@@ -1,17 +1,17 @@
-just_now = A l'instant
+just_now = À l’instant
 
 minutes_ago = { $minutes:plural ->
   [=1] {il y a 1 min}
   *[other] {il y a { $minutes:number } min}
 }
 
-today_at_time = Aujourd'hui a { $event:time style=short }
+today_at_time = Aujourd’hui à { $event:time style=short }
 
-yesterday_at_time = Hier a { $event:time style=short }
+yesterday_at_time = Hier à { $event:time style=short }
 
-weekday_at_time = { $event:datetime weekday=long } a { $event:time style=short }
+weekday_at_time = { $event:datetime weekday=long } à { $event:time style=short }
 
-same_year_at_time = { $event:datetime day=numeric month=short } a { $event:time style=short }
+same_year_at_time = { $event:datetime day=numeric month=short } à { $event:time style=short }
 
 older_date = { $event:date style=medium }
 
@@ -19,6 +19,6 @@ older_date_time = { $event:datetime dateStyle=medium timeStyle=short }
 
 future_at_datetime = { $event:datetime dateStyle=medium timeStyle=short }
 
-detail_datetime = { $event:datetime weekday=long day=numeric month=long year=numeric } a { $event:time style=short }
+detail_datetime = { $event:datetime weekday=long day=numeric month=long year=numeric } à { $event:time style=short }
 
 audit_datetime = { $auditTimestamp } { $timezone }

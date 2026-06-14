@@ -16,7 +16,7 @@ mod time;
 pub use bucket::TimelineDateBucket;
 pub use error::{TimelineDateError, TimelineDateResult};
 #[cfg(feature = "uniffi")]
-pub use ffi::{TimelineDateFfiError, format_feed_label};
+pub use ffi::{TimelineDateFfiError, format_feed_label, format_timeline_date_for_feed};
 pub use formatter::TimelineDateFormatter;
 pub use options::{
     FuturePolicy, HourCycle, OldDateTimePolicy, TimelineDateOptions, TimelineDateStyle,

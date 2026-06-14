@@ -40,9 +40,42 @@ impl From<TimelineDateError> for TimelineDateFfiError {
 }
 
 #[uniffi::export]
+pub fn format_timeline_date_for_feed(
+    event_unix_ms: i64,
+    now_unix_ms: i64,
+    timezone: String,
+    locale_preferences_csv: String,
+    hour_cycle: String,
+) -> Result<String, TimelineDateFfiError> {
+    format_feed_label_inner(
+        event_unix_ms,
+        now_unix_ms,
+        timezone,
+        locale_preferences_csv,
+        hour_cycle,
+    )
+}
+
+#[uniffi::export]
 pub fn format_feed_label(
     now_unix_ms: i64,
     event_unix_ms: i64,
+    timezone: String,
+    locale_preferences_csv: String,
+    hour_cycle: String,
+) -> Result<String, TimelineDateFfiError> {
+    format_timeline_date_for_feed(
+        event_unix_ms,
+        now_unix_ms,
+        timezone,
+        locale_preferences_csv,
+        hour_cycle,
+    )
+}
+
+fn format_feed_label_inner(
+    event_unix_ms: i64,
+    now_unix_ms: i64,
     timezone: String,
     locale_preferences_csv: String,
     hour_cycle: String,
@@ -79,7 +112,8 @@ fn parse_hour_cycle(value: &str) -> Result<HourCycle, TimelineDateFfiError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        TimelineDateFfiError, format_feed_label, parse_hour_cycle, parse_locale_preferences_csv,
+        TimelineDateFfiError, format_feed_label, format_timeline_date_for_feed, parse_hour_cycle,
+        parse_locale_preferences_csv,
     };
     use crate::{HourCycle, TimelineDateError};
 
@@ -111,11 +145,11 @@ mod tests {
     }
 
     #[test]
-    fn formats_feed_label_with_csv_locale_preferences() {
+    fn formats_timeline_date_for_feed_with_canonical_order() {
         assert_eq!(
-            format_feed_label(
-                600_000,
+            format_timeline_date_for_feed(
                 120_000,
+                600_000,
                 "UTC".to_owned(),
                 "es-MX, fr".to_owned(),
                 "h24".to_owned(),
@@ -126,9 +160,51 @@ mod tests {
     }
 
     #[test]
-    fn propagates_invalid_timezone_and_locale() {
+    fn compatibility_alias_delegates_old_argument_order() {
         assert_eq!(
             format_feed_label(
+                600_000,
+                120_000,
+                "UTC".to_owned(),
+                "es-MX, fr".to_owned(),
+                "h24".to_owned(),
+            ),
+            format_timeline_date_for_feed(
+                120_000,
+                600_000,
+                "UTC".to_owned(),
+                "es-MX, fr".to_owned(),
+                "h24".to_owned(),
+            )
+        );
+    }
+
+    #[test]
+    fn canonical_order_does_not_silently_match_swapped_arguments() {
+        assert_ne!(
+            format_timeline_date_for_feed(
+                120_000,
+                600_000,
+                "UTC".to_owned(),
+                "en".to_owned(),
+                "h24".to_owned(),
+            )
+            .expect("canonical"),
+            format_timeline_date_for_feed(
+                600_000,
+                120_000,
+                "UTC".to_owned(),
+                "en".to_owned(),
+                "h24".to_owned(),
+            )
+            .expect("swapped")
+        );
+    }
+
+    #[test]
+    fn propagates_invalid_timezone_and_locale() {
+        assert_eq!(
+            format_timeline_date_for_feed(
                 0,
                 0,
                 "Mars/Base".to_owned(),
@@ -138,7 +214,7 @@ mod tests {
             Err(TimelineDateFfiError::InvalidTimezone)
         );
         assert_eq!(
-            format_feed_label(
+            format_timeline_date_for_feed(
                 0,
                 0,
                 "UTC".to_owned(),
@@ -146,6 +222,20 @@ mod tests {
                 "default".to_owned(),
             ),
             Err(TimelineDateFfiError::InvalidLocale)
+        );
+    }
+
+    #[test]
+    fn facade_rejects_invalid_hour_cycle() {
+        assert_eq!(
+            format_timeline_date_for_feed(
+                0,
+                0,
+                "UTC".to_owned(),
+                "en".to_owned(),
+                "midday".to_owned(),
+            ),
+            Err(TimelineDateFfiError::InvalidHourCycle)
         );
     }
 

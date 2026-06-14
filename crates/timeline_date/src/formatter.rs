@@ -46,16 +46,12 @@ impl TimelineDateFormatter {
         style: TimelineDateStyle,
     ) -> TimelineDateResult<TimelineDateBucket> {
         match style {
-            TimelineDateStyle::Feed => classify::classify_feed_millis(
-                event_unix_ms,
-                &self.inner.clock,
-                self.inner.options.future_policy,
-            ),
-            TimelineDateStyle::Detail => {
-                classify::classify_fixed_millis(event_unix_ms, TimelineDateBucket::Detail)
-            }
-            TimelineDateStyle::Audit => {
-                classify::classify_fixed_millis(event_unix_ms, TimelineDateBucket::Audit)
+            TimelineDateStyle::Feed | TimelineDateStyle::Detail | TimelineDateStyle::Audit => {
+                classify::classify_feed_millis(
+                    event_unix_ms,
+                    &self.inner.clock,
+                    self.inner.options.future_policy,
+                )
             }
         }
     }

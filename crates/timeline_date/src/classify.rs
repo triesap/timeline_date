@@ -16,15 +16,6 @@ pub(crate) fn classify_feed_millis(
 }
 
 #[cfg(feature = "jiff")]
-pub(crate) fn classify_fixed_millis(
-    event_unix_ms: i64,
-    bucket: TimelineDateBucket,
-) -> TimelineDateResult<TimelineDateBucket> {
-    time::timestamp_from_millis(event_unix_ms)?;
-    Ok(bucket)
-}
-
-#[cfg(feature = "jiff")]
 fn classify_feed_timestamps(
     event: jiff::Timestamp,
     now: jiff::Timestamp,
@@ -86,16 +77,6 @@ pub(crate) fn classify_feed_millis(
 ) -> TimelineDateResult<TimelineDateBucket> {
     Err(crate::TimelineDateError::FormattingUnsupported(
         "feed classification requires the jiff feature".to_owned(),
-    ))
-}
-
-#[cfg(not(feature = "jiff"))]
-pub(crate) fn classify_fixed_millis(
-    _event_unix_ms: i64,
-    _bucket: TimelineDateBucket,
-) -> TimelineDateResult<TimelineDateBucket> {
-    Err(crate::TimelineDateError::FormattingUnsupported(
-        "classification requires the jiff feature".to_owned(),
     ))
 }
 
@@ -236,20 +217,31 @@ mod tests {
     }
 
     #[test]
-    fn detail_and_audit_have_explicit_buckets() {
-        let formatter = formatter(0, "UTC");
-        assert_eq!(
-            formatter
-                .classify_millis(0, TimelineDateStyle::Detail)
-                .expect("detail bucket"),
-            TimelineDateBucket::Detail
-        );
-        assert_eq!(
-            formatter
-                .classify_millis(0, TimelineDateStyle::Audit)
-                .expect("audit bucket"),
-            TimelineDateBucket::Audit
-        );
+    fn detail_and_audit_return_feed_equivalent_buckets() {
+        let now = ms("2026-06-08T19:00:00Z");
+        let formatter = formatter(now, "America/Vancouver");
+        let cases = [
+            (
+                now - 8 * 60_000,
+                TimelineDateBucket::MinutesAgo { minutes: 8 },
+            ),
+            (ms("2025-12-31T20:00:00Z"), TimelineDateBucket::Older),
+        ];
+
+        for (event, expected) in cases {
+            assert_eq!(
+                formatter
+                    .classify_millis(event, TimelineDateStyle::Detail)
+                    .expect("detail bucket"),
+                expected
+            );
+            assert_eq!(
+                formatter
+                    .classify_millis(event, TimelineDateStyle::Audit)
+                    .expect("audit bucket"),
+                expected
+            );
+        }
     }
 
     #[test]

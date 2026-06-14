@@ -61,9 +61,6 @@ fn message_key(
                 OldDateTimePolicy::DateTime => Ok("timeline_date.older_date_time"),
             },
             TimelineDateBucket::Future => Ok("timeline_date.future_at_datetime"),
-            TimelineDateBucket::Detail | TimelineDateBucket::Audit => Err(
-                TimelineDateError::Internal(format!("invalid feed bucket: {bucket:?}")),
-            ),
         },
     }
 }
@@ -285,30 +282,6 @@ mod tests {
     }
 
     #[test]
-    fn message_key_rejects_invalid_feed_buckets() {
-        assert_eq!(
-            message_key(
-                TimelineDateStyle::Feed,
-                TimelineDateBucket::Detail,
-                OldDateTimePolicy::DateOnly
-            ),
-            Err(TimelineDateError::Internal(
-                "invalid feed bucket: Detail".to_owned()
-            ))
-        );
-        assert_eq!(
-            message_key(
-                TimelineDateStyle::Feed,
-                TimelineDateBucket::Audit,
-                OldDateTimePolicy::DateTime
-            ),
-            Err(TimelineDateError::Internal(
-                "invalid feed bucket: Audit".to_owned()
-            ))
-        );
-    }
-
-    #[test]
     fn message_args_include_only_needed_values() {
         let just_now = message_args(
             42,
@@ -352,7 +325,7 @@ mod tests {
         let detail = message_args(
             42,
             TimelineDateStyle::Detail,
-            TimelineDateBucket::Detail,
+            TimelineDateBucket::JustNow,
             "UTC",
         )
         .expect("detail args");
@@ -366,7 +339,7 @@ mod tests {
             let audit = message_args(
                 ms("2026-06-08T19:00:00.250Z"),
                 TimelineDateStyle::Audit,
-                TimelineDateBucket::Audit,
+                TimelineDateBucket::Older,
                 "America/Vancouver",
             )
             .expect("audit args");
@@ -388,7 +361,7 @@ mod tests {
             message_args(
                 i64::MAX,
                 TimelineDateStyle::Audit,
-                TimelineDateBucket::Audit,
+                TimelineDateBucket::JustNow,
                 "UTC",
             )
             .err(),
@@ -398,7 +371,7 @@ mod tests {
             message_args(
                 0,
                 TimelineDateStyle::Audit,
-                TimelineDateBucket::Audit,
+                TimelineDateBucket::JustNow,
                 "Mars/Base",
             )
             .err(),

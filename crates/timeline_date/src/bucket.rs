@@ -9,8 +9,6 @@ pub enum TimelineDateBucket {
     SameYear,
     Older,
     Future,
-    Detail,
-    Audit,
 }
 
 #[cfg(test)]
@@ -31,6 +29,5 @@ mod tests {
         assert_ne!(TimelineDateBucket::Today, TimelineDateBucket::Yesterday);
         assert_ne!(TimelineDateBucket::Weekday, TimelineDateBucket::SameYear);
         assert_ne!(TimelineDateBucket::Older, TimelineDateBucket::Future);
-        assert_ne!(TimelineDateBucket::Detail, TimelineDateBucket::Audit);
     }
 }
